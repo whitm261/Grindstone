@@ -81,8 +81,8 @@ export default function HomeScreen() {
         <View style={styles.links}>
           <Link href="/exercises" asChild>
             <Pressable style={styles.linkCard}>
-              <FontAwesome name="plus-circle" size={22} color={theme.colors.accent} />
-              <Text style={styles.linkLabel}>Manage exercises</Text>
+              <FontAwesome name="list" size={22} color={theme.colors.accent} />
+              <Text style={styles.linkLabel}>All exercises</Text>
             </Pressable>
           </Link>
           <Link href="/history" asChild>
@@ -92,6 +92,12 @@ export default function HomeScreen() {
             </Pressable>
           </Link>
         </View>
+        <Button variant="ghost" onPress={() => router.push('/exercise/new')} style={styles.addExerciseRow}>
+          <View style={styles.addExerciseRowInner}>
+            <FontAwesome name="plus-circle" size={20} color={theme.colors.accent} />
+            <Text style={styles.addExerciseRowLabel}>Add exercise</Text>
+          </View>
+        </Button>
       </View>
     </ScrollView>
   );
@@ -137,4 +143,11 @@ const styles = StyleSheet.create({
     gap: theme.space.sm,
   },
   linkLabel: { fontSize: theme.fontSize.body, color: theme.colors.textPrimary, fontWeight: '500' },
+  addExerciseRow: { width: '100%' },
+  addExerciseRowInner: { flexDirection: 'row', alignItems: 'center', gap: theme.space.sm },
+  addExerciseRowLabel: {
+    fontSize: theme.fontSize.body,
+    fontWeight: '600',
+    color: theme.colors.textPrimary,
+  },
 });

@@ -355,7 +355,18 @@ export default function WorkoutScreen() {
                 </Pressable>
               )}
               ListEmptyComponent={
-                <Text style={styles.empty}>No exercises — create some in the Exercises tab.</Text>
+                <View style={styles.modalEmpty}>
+                  <Text style={styles.empty}>
+                    No exercises yet. Create one to add it to this workout.
+                  </Text>
+                  <Button
+                    onPress={() => {
+                      setPickerOpen(false);
+                      router.push('/exercise/new');
+                    }}>
+                    Create exercise
+                  </Button>
+                </View>
               }
             />
             <Button variant="ghost" onPress={() => setPickerOpen(false)}>
@@ -430,6 +441,7 @@ const styles = StyleSheet.create({
     marginBottom: theme.space.md,
   },
   modalList: { maxHeight: 360 },
+  modalEmpty: { paddingVertical: theme.space.md, gap: theme.space.md, alignItems: 'stretch' },
   pickerRow: { paddingVertical: theme.space.md, borderBottomWidth: 1, borderBottomColor: theme.colors.border },
   pickerName: { fontSize: theme.fontSize.body, color: theme.colors.textPrimary },
 });

@@ -27,19 +27,21 @@ bunx tsc --noEmit      # Typecheck
 
 ## Project layout
 
-| Path | Role |
-|------|------|
-| `constants/theme.ts` | Dark-first color and spacing tokens |
-| `constants/navigationTheme.ts` | React Navigation dark theme |
-| `db/schema.ts` | Drizzle table definitions |
-| `db/init.ts` | SQLite DDL + `PRAGMA user_version` migrations |
-| `db/client.ts` | `openDatabaseSync`, FK enforcement, Drizzle client |
-| `lib/queries.ts` | Data access and chart aggregates |
-| `app/(tabs)/` | Home, Exercises, Templates, History |
-| `app/workout/[id].tsx` | Active session logging |
-| `app/session/[id].tsx` | Completed session detail |
-| `app/template/` | Create/edit templates |
-| `app/exercise/` | Create/edit exercises + charts |
+
+| Path                           | Role                                               |
+| ------------------------------ | -------------------------------------------------- |
+| `constants/theme.ts`           | Dark-first color and spacing tokens                |
+| `constants/navigationTheme.ts` | React Navigation dark theme                        |
+| `db/schema.ts`                 | Drizzle table definitions                          |
+| `db/init.ts`                   | SQLite DDL + `PRAGMA user_version` migrations      |
+| `db/client.ts`                 | `openDatabaseSync`, FK enforcement, Drizzle client |
+| `lib/queries.ts`               | Data access and chart aggregates                   |
+| `app/(tabs)/`                  | Home, Exercises, Templates, History                |
+| `app/workout/[id].tsx`         | Active session logging                             |
+| `app/session/[id].tsx`         | Completed session detail                           |
+| `app/template/`                | Create/edit templates                              |
+| `app/exercise/`                | Create/edit exercises + charts                     |
+
 
 ## Security & privacy
 

@@ -1,6 +1,7 @@
 import FontAwesome from '@expo/vector-icons/FontAwesome';
-import { Tabs } from 'expo-router';
+import { Link, Tabs } from 'expo-router';
 import React from 'react';
+import { Pressable } from 'react-native';
 
 import { theme } from '@/constants/theme';
 import { useClientOnlyValue } from '@/components/useClientOnlyValue';
@@ -40,6 +41,13 @@ export default function TabLayout() {
         options={{
           title: 'Exercises',
           tabBarIcon: ({ color }) => <TabBarIcon name="list" color={color} />,
+          headerRight: () => (
+            <Link href="/exercise/new" asChild>
+              <Pressable hitSlop={12} style={{ marginRight: 8, padding: 6 }}>
+                <FontAwesome name="plus" size={22} color={theme.colors.accent} />
+              </Pressable>
+            </Link>
+          ),
         }}
       />
       <Tabs.Screen

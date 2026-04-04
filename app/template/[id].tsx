@@ -214,7 +214,18 @@ export default function EditTemplateScreen() {
                 </Pressable>
               )}
               ListEmptyComponent={
-                <Text style={styles.hint}>Create exercises in the Exercises tab first.</Text>
+                <View style={styles.modalEmpty}>
+                  <Text style={styles.hint}>
+                    No exercises yet. Create one to add it to this template.
+                  </Text>
+                  <Button
+                    onPress={() => {
+                      setPickerOpen(false);
+                      router.push('/exercise/new');
+                    }}>
+                    Create exercise
+                  </Button>
+                </View>
               }
             />
             <Button variant="ghost" onPress={() => setPickerOpen(false)}>
@@ -277,6 +288,7 @@ const styles = StyleSheet.create({
     marginBottom: theme.space.md,
   },
   modalList: { maxHeight: 320 },
+  modalEmpty: { paddingVertical: theme.space.md, gap: theme.space.md, alignItems: 'stretch' },
   pickerRow: { paddingVertical: theme.space.md, borderBottomWidth: 1, borderBottomColor: theme.colors.border },
   pickerName: { fontSize: theme.fontSize.body, color: theme.colors.textPrimary },
 });

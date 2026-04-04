@@ -26,7 +26,7 @@ CREATE TABLE IF NOT EXISTS template_exercises (
 CREATE TABLE IF NOT EXISTS template_sets (
   id TEXT PRIMARY KEY NOT NULL,
   template_exercise_id TEXT NOT NULL REFERENCES template_exercises(id) ON DELETE CASCADE,
-  index INTEGER NOT NULL,
+  "index" INTEGER NOT NULL,
   target_reps INTEGER NOT NULL,
   target_weight REAL NOT NULL
 );
@@ -46,7 +46,7 @@ CREATE TABLE IF NOT EXISTS workout_exercises (
 CREATE TABLE IF NOT EXISTS set_logs (
   id TEXT PRIMARY KEY NOT NULL,
   workout_exercise_id TEXT NOT NULL REFERENCES workout_exercises(id) ON DELETE CASCADE,
-  index INTEGER NOT NULL,
+  "index" INTEGER NOT NULL,
   reps INTEGER NOT NULL,
   weight REAL NOT NULL,
   completed INTEGER NOT NULL DEFAULT 0
