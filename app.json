@@ -22,7 +22,8 @@
         "backgroundColor": "#0c0f14"
       },
       "edgeToEdgeEnabled": true,
-      "predictiveBackGestureEnabled": false
+      "predictiveBackGestureEnabled": false,
+      "package": "com.whitm261.movingweight"
     },
     "web": {
       "bundler": "metro",
@@ -35,6 +36,12 @@
     ],
     "experiments": {
       "typedRoutes": true
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "afb78ded-2e15-4986-a8a1-76a619c04f94"
+      }
     }
   }
 }

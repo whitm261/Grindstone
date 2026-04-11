@@ -24,3 +24,9 @@ export function getDb() {
   }
   return _db;
 }
+
+/** For tests only — replaces the active Drizzle instance with a bun:sqlite-backed one. */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export function _setTestDb(db: any): void {
+  _db = db;
+}

@@ -19,7 +19,7 @@ export default function SessionDetailScreen() {
       return;
     }
     setDetail(d);
-  }, [id, router]);
+  }, [id]);
 
   useFocusEffect(load);
 

@@ -33,7 +33,7 @@ export default function HistoryScreen() {
           <MotiView
             from={{ opacity: 0, translateY: 10 }}
             animate={{ opacity: 1, translateY: 0 }}
-            transition={{ type: 'timing', duration: 240, delay: index * 35 }}>
+            transition={{ type: 'timing', duration: 240, delay: Math.min(index * 35, 500) }}>
             <Link href={`/session/${item.id}`} asChild>
               <Pressable>
                 <Card>

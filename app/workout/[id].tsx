@@ -37,20 +37,7 @@ import {
   updateSetLog,
   updateWorkoutName,
 } from '@/lib/queries';
-
-function formatRelDate(iso: string): string {
-  const days = Math.floor((Date.now() - new Date(iso).getTime()) / 86_400_000);
-  if (days === 0) return 'today';
-  if (days === 1) return 'yesterday';
-  if (days < 7) return `${days}d ago`;
-  if (days < 30) return `${Math.floor(days / 7)}w ago`;
-  return `${Math.floor(days / 30)}mo ago`;
-}
-
-function fmtSet(s: { reps: number; weight: number }): string {
-  const w = Number.isInteger(s.weight) ? String(s.weight) : s.weight.toFixed(1);
-  return s.weight > 0 ? `${s.reps}×${w}` : `${s.reps} reps`;
-}
+import { formatRelDate, fmtSet } from '@/lib/utils';
 
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
   UIManager.setLayoutAnimationEnabledExperimental(true);

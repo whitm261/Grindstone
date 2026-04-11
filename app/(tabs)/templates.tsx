@@ -63,7 +63,7 @@ export default function TemplatesScreen() {
           <MotiView
             from={{ opacity: 0, translateY: 10 }}
             animate={{ opacity: 1, translateY: 0 }}
-            transition={{ type: 'timing', duration: 240, delay: index * 40 }}>
+            transition={{ type: 'timing', duration: 240, delay: Math.min(index * 40, 500) }}>
             <Card style={styles.card}>
               <View style={styles.cardTop}>
                 <View style={styles.cardTitleRow}>

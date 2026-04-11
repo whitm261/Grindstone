@@ -32,7 +32,8 @@ export default function ExerciseDetailScreen() {
   const [name, setName] = useState('');
   const [notes, setNotes] = useState('');
   const [tab, setTab] = useState<'volume' | 'weight'>('volume');
-  const [, setChartTick] = useState(0);
+  const [volData, setVolData] = useState<ReturnType<typeof getExerciseVolumeHistory>>([]);
+  const [weightData, setWeightData] = useState<ReturnType<typeof getExerciseMaxWeightHistory>>([]);
 
   const reload = useCallback(() => {
     const ex = getExercise(id);
@@ -42,13 +43,11 @@ export default function ExerciseDetailScreen() {
     }
     setName(ex.name);
     setNotes(ex.notes);
-    setChartTick((t) => t + 1);
-  }, [id, router]);
+    setVolData(getExerciseVolumeHistory(id, 365));
+    setWeightData(getExerciseMaxWeightHistory(id, 365));
+  }, [id]);
 
   useFocusEffect(reload);
-
-  const volData = getExerciseVolumeHistory(id, 365);
-  const weightData = getExerciseMaxWeightHistory(id, 365);
 
   const chartPoints =
     tab === 'volume'

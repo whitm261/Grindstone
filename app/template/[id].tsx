@@ -1,7 +1,8 @@
 import FontAwesome from '@expo/vector-icons/FontAwesome';
-import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
-import { useCallback, useState } from 'react';
+import { useFocusEffect, useLocalSearchParams, useNavigation, useRouter } from 'expo-router';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
+  Alert,
   FlatList,
   KeyboardAvoidingView,
   Modal,
@@ -30,11 +31,13 @@ type Block = { exerciseId: string; exerciseName: string; sets: Array<{ reps: num
 export default function EditTemplateScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
+  const navigation = useNavigation();
   const [name, setName] = useState('');
   const [notes, setNotes] = useState('');
   const [blocks, setBlocks] = useState<Block[]>([]);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [allExercises, setAllExercises] = useState<Exercise[]>([]);
+  const dirty = useRef(false);
 
   const load = useCallback(() => {
     const d = getTemplateDetail(id);
@@ -54,9 +57,30 @@ export default function EditTemplateScreen() {
       })),
     );
     setAllExercises(listExercises());
-  }, [id, router]);
+    dirty.current = false;
+  }, [id]);
 
   useFocusEffect(load);
+
+  useEffect(() => {
+    const unsubscribe = navigation.addListener('beforeRemove', (e) => {
+      if (!dirty.current) return;
+      e.preventDefault();
+      Alert.alert(
+        'Discard changes?',
+        'You have unsaved changes to this template.',
+        [
+          { text: "Don't leave", style: 'cancel' },
+          {
+            text: 'Discard',
+            style: 'destructive',
+            onPress: () => navigation.dispatch(e.data.action),
+          },
+        ],
+      );
+    });
+    return unsubscribe;
+  }, [navigation]);
 
   const persistMeta = () => {
     updateTemplateMeta(id, name, notes);
@@ -72,9 +96,11 @@ export default function EditTemplateScreen() {
       })),
     }));
     replaceTemplateStructure(id, structure);
+    dirty.current = false;
   };
 
   const addExercise = (ex: Exercise) => {
+    dirty.current = true;
     setBlocks((prev) => [
       ...prev,
       { exerciseId: ex.id, exerciseName: ex.name, sets: [{ reps: 8, weight: 0 }] },
@@ -83,10 +109,12 @@ export default function EditTemplateScreen() {
   };
 
   const removeBlock = (index: number) => {
+    dirty.current = true;
     setBlocks((prev) => prev.filter((_, i) => i !== index));
   };
 
   const addSet = (blockIndex: number) => {
+    dirty.current = true;
     setBlocks((prev) => {
       const next = [...prev];
       const last = next[blockIndex].sets[next[blockIndex].sets.length - 1];
@@ -99,6 +127,7 @@ export default function EditTemplateScreen() {
   };
 
   const removeSet = (blockIndex: number, setIndex: number) => {
+    dirty.current = true;
     setBlocks((prev) => {
       const next = [...prev];
       if (next[blockIndex].sets.length <= 1) return prev;
@@ -115,6 +144,7 @@ export default function EditTemplateScreen() {
     setIndex: number,
     patch: Partial<{ reps: number; weight: number }>,
   ) => {
+    dirty.current = true;
     setBlocks((prev) => {
       const next = [...prev];
       const sets = [...next[blockIndex].sets];
