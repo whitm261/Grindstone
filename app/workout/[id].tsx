@@ -22,12 +22,13 @@ import { Card } from '@/components/ui/Card';
 import { TextField } from '@/components/ui/TextField';
 import { theme } from '@/constants/theme';
 import type { Exercise, SetLog } from '@/db/schema';
-import type { WorkoutDetail } from '@/lib/queries';
+import type { LastExerciseData, WorkoutDetail } from '@/lib/queries';
 import {
   abandonWorkout,
   addExerciseToWorkout,
   addSetToWorkoutExercise,
   completeWorkout,
+  getLastWorkoutDataForExercises,
   getWorkoutDetail,
   listExercises,
   moveWorkoutExercise,
@@ -36,6 +37,20 @@ import {
   updateSetLog,
   updateWorkoutName,
 } from '@/lib/queries';
+
+function formatRelDate(iso: string): string {
+  const days = Math.floor((Date.now() - new Date(iso).getTime()) / 86_400_000);
+  if (days === 0) return 'today';
+  if (days === 1) return 'yesterday';
+  if (days < 7) return `${days}d ago`;
+  if (days < 30) return `${Math.floor(days / 7)}w ago`;
+  return `${Math.floor(days / 30)}mo ago`;
+}
+
+function fmtSet(s: { reps: number; weight: number }): string {
+  const w = Number.isInteger(s.weight) ? String(s.weight) : s.weight.toFixed(1);
+  return s.weight > 0 ? `${s.reps}×${w}` : `${s.reps} reps`;
+}
 
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
   UIManager.setLayoutAnimationEnabledExperimental(true);
@@ -56,6 +71,13 @@ function SetRow({
   const [weight, setWeight] = useState(String(set.weight));
   const debounceR = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const debounceW = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+
+  useEffect(() => {
+    return () => {
+      clearTimeout(debounceR.current);
+      clearTimeout(debounceW.current);
+    };
+  }, []);
 
   useEffect(() => {
     setReps(String(set.reps));
@@ -129,6 +151,7 @@ export default function WorkoutScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
   const [detail, setDetail] = useState<WorkoutDetail | null>(null);
+  const [lastData, setLastData] = useState<Map<string, LastExerciseData>>(new Map());
   const [sessionTitle, setSessionTitle] = useState('');
   const [pickerOpen, setPickerOpen] = useState(false);
   const [exercises, setExercises] = useState<Exercise[]>([]);
@@ -146,9 +169,15 @@ export default function WorkoutScreen() {
     }
     setDetail(d);
     setSessionTitle(d.workout.name);
-  }, [id, router]);
+    const exIds = d.blocks.map((b) => b.exercise.id);
+    setLastData(getLastWorkoutDataForExercises(exIds));
+  }, [id]);
 
   useFocusEffect(refresh);
+
+  useEffect(() => {
+    if (pickerOpen) setExercises(listExercises());
+  }, [pickerOpen]);
 
   const toggleCollapse = (weId: string) => {
     LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
@@ -223,10 +252,7 @@ export default function WorkoutScreen() {
 
         <Pressable
           style={styles.addExerciseBtn}
-          onPress={() => {
-            setExercises(listExercises());
-            setPickerOpen(true);
-          }}>
+          onPress={() => setPickerOpen(true)}>
           <FontAwesome name="plus" size={14} color={theme.colors.accent} />
           <Text style={styles.addExerciseText}> Add exercise</Text>
         </Pressable>
@@ -234,6 +260,7 @@ export default function WorkoutScreen() {
         {detail.blocks.map((block) => {
           const isCollapsed = collapsed[block.workoutExercise.id];
           const allDone = block.sets.length > 0 && block.sets.every((s) => s.completed);
+          const prev = lastData.get(block.exercise.id);
           return (
             <Card key={block.workoutExercise.id} style={styles.block}>
               <Pressable
@@ -286,6 +313,12 @@ export default function WorkoutScreen() {
                   </Pressable>
                 </View>
               </Pressable>
+
+              {prev && (
+                <Text style={styles.lastSession}>
+                  Last ({formatRelDate(prev.completedAt)}): {prev.sets.map(fmtSet).join(' · ')}
+                </Text>
+              )}
 
               {!isCollapsed && (
                 <View style={styles.sets}>
@@ -402,7 +435,13 @@ const styles = StyleSheet.create({
   blockTitleLeft: { flexDirection: 'row', alignItems: 'center', gap: theme.space.sm, flex: 1 },
   exerciseName: { fontSize: theme.fontSize.title, fontWeight: '700', color: theme.colors.textPrimary, flex: 1 },
   blockActions: { flexDirection: 'row', gap: theme.space.md },
-  sets: { marginTop: theme.space.md, gap: theme.space.sm },
+  lastSession: {
+    fontSize: theme.fontSize.caption,
+    color: theme.colors.textMuted,
+    marginTop: theme.space.xs,
+    marginBottom: theme.space.xs,
+  },
+  sets: { marginTop: theme.space.sm, gap: theme.space.sm },
   setRow: {
     flexDirection: 'row',
     alignItems: 'center',
