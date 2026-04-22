@@ -8,12 +8,10 @@ import {
   FlatList,
   LayoutAnimation,
   Modal,
-  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
   Text,
-  UIManager,
   View,
 } from 'react-native';
 
@@ -38,10 +36,6 @@ import {
   updateWorkoutName,
 } from '@/lib/queries';
 import { formatRelDate, fmtSet } from '@/lib/utils';
-
-if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
-  UIManager.setLayoutAnimationEnabledExperimental(true);
-}
 
 function SetRow({
   set,

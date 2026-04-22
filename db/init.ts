@@ -10,8 +10,6 @@ const migrations: Migration[] = [
     version: 1,
     up: (db) => {
       db.execSync(`
-        PRAGMA journal_mode = WAL;
-        PRAGMA foreign_keys = ON;
         CREATE TABLE IF NOT EXISTS exercises (
           id TEXT PRIMARY KEY NOT NULL,
           name TEXT NOT NULL,
@@ -66,6 +64,9 @@ const migrations: Migration[] = [
 const SCHEMA_VERSION = migrations.length;
 
 export function initDatabase(db: SQLiteDatabase): void {
+  db.execSync('PRAGMA journal_mode = WAL');
+  db.execSync('PRAGMA foreign_keys = ON');
+
   const row = db.getFirstSync<{ user_version: number }>('PRAGMA user_version');
   const currentVersion = row?.user_version ?? 0;
   if (currentVersion >= SCHEMA_VERSION) return;
