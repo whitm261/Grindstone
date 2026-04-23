@@ -2,12 +2,14 @@ import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { useCallback, useState } from 'react';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
 
+import { useThemedStyles } from '@/components/theme/useThemedStyles';
 import { Card } from '@/components/ui/Card';
-import { theme } from '@/constants/theme';
+import type { AppTheme } from '@/constants/theme';
 import type { WorkoutDetail } from '@/lib/queries';
 import { getWorkoutDetail } from '@/lib/queries';
 
 export default function SessionDetailScreen() {
+  const styles = useThemedStyles(createStyles);
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
   const [detail, setDetail] = useState<WorkoutDetail | null>(null);
@@ -57,18 +59,29 @@ export default function SessionDetailScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  center: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: theme.colors.background },
-  muted: { color: theme.colors.textMuted },
-  content: { padding: theme.space.md, paddingBottom: 48 },
-  title: {
-    fontSize: theme.fontSize.headline,
-    fontWeight: '700',
-    color: theme.colors.textPrimary,
-  },
-  meta: { fontSize: theme.fontSize.caption, color: theme.colors.textSecondary, marginTop: theme.space.xs, marginBottom: theme.space.lg },
-  block: { marginBottom: theme.space.md },
-  exerciseName: { fontSize: theme.fontSize.title, fontWeight: '700', color: theme.colors.textPrimary, marginBottom: theme.space.sm },
-  setLine: { paddingVertical: 4 },
-  setText: { fontSize: theme.fontSize.body, color: theme.colors.textSecondary },
-});
+const createStyles = (theme: AppTheme) =>
+  StyleSheet.create({
+    center: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: theme.colors.background },
+    muted: { color: theme.colors.textMuted },
+    content: { padding: theme.space.md, paddingBottom: 48 },
+    title: {
+      fontSize: theme.fontSize.headline,
+      fontWeight: '700',
+      color: theme.colors.textPrimary,
+    },
+    meta: {
+      fontSize: theme.fontSize.caption,
+      color: theme.colors.textSecondary,
+      marginTop: theme.space.xs,
+      marginBottom: theme.space.lg,
+    },
+    block: { marginBottom: theme.space.md },
+    exerciseName: {
+      fontSize: theme.fontSize.title,
+      fontWeight: '700',
+      color: theme.colors.textPrimary,
+      marginBottom: theme.space.sm,
+    },
+    setLine: { paddingVertical: 4 },
+    setText: { fontSize: theme.fontSize.body, color: theme.colors.textSecondary },
+  });

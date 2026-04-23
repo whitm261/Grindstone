@@ -9,7 +9,9 @@ import {
   type ViewStyle,
 } from 'react-native';
 
-import { theme } from '@/constants/theme';
+import { useAppTheme } from '@/components/theme/AppThemeProvider';
+import { useThemedStyles } from '@/components/theme/useThemedStyles';
+import type { AppTheme } from '@/constants/theme';
 
 type Variant = 'primary' | 'ghost' | 'danger';
 
@@ -30,6 +32,8 @@ export function Button({
   loading,
   style,
 }: Props) {
+  const theme = useAppTheme();
+  const styles = useThemedStyles(createStyles);
   const isPrimary = variant === 'primary';
   const isDanger = variant === 'danger';
 
@@ -73,39 +77,40 @@ export function Button({
   );
 }
 
-const styles = StyleSheet.create({
-  pressed: { opacity: 0.9 },
-  base: {
-    minHeight: 48,
-    paddingHorizontal: theme.space.md,
-    borderRadius: theme.radius.md,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  primary: {
-    backgroundColor: theme.colors.accent,
-  },
-  ghost: {
-    backgroundColor: 'transparent',
-    borderWidth: 1,
-    borderColor: theme.colors.border,
-  },
-  danger: {
-    backgroundColor: theme.colors.dangerMuted,
-    borderWidth: 1,
-    borderColor: theme.colors.danger,
-  },
-  label: {
-    fontSize: theme.fontSize.body,
-    fontWeight: '600',
-  },
-  labelPrimary: {
-    color: theme.colors.background,
-  },
-  labelGhost: {
-    color: theme.colors.textPrimary,
-  },
-  labelDanger: {
-    color: theme.colors.danger,
-  },
-});
+const createStyles = (theme: AppTheme) =>
+  StyleSheet.create({
+    pressed: { opacity: 0.9 },
+    base: {
+      minHeight: 48,
+      paddingHorizontal: theme.space.md,
+      borderRadius: theme.radius.md,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    primary: {
+      backgroundColor: theme.colors.accent,
+    },
+    ghost: {
+      backgroundColor: 'transparent',
+      borderWidth: 1,
+      borderColor: theme.colors.border,
+    },
+    danger: {
+      backgroundColor: theme.colors.dangerMuted,
+      borderWidth: 1,
+      borderColor: theme.colors.danger,
+    },
+    label: {
+      fontSize: theme.fontSize.body,
+      fontWeight: '600',
+    },
+    labelPrimary: {
+      color: theme.colors.background,
+    },
+    labelGhost: {
+      color: theme.colors.textPrimary,
+    },
+    labelDanger: {
+      color: theme.colors.danger,
+    },
+  });

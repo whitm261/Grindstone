@@ -5,13 +5,17 @@ import { useCallback, useState } from 'react';
 import { Alert, FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { useAppTheme } from '@/components/theme/AppThemeProvider';
+import { useThemedStyles } from '@/components/theme/useThemedStyles';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
-import { theme } from '@/constants/theme';
+import type { AppTheme } from '@/constants/theme';
 import type { WorkoutTemplate } from '@/db/schema';
 import { deleteTemplate, listTemplates, startWorkoutFromTemplate } from '@/lib/queries';
 
 export default function TemplatesScreen() {
+  const theme = useAppTheme();
+  const styles = useThemedStyles(createStyles);
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const [data, setData] = useState<WorkoutTemplate[]>([]);
@@ -98,39 +102,40 @@ export default function TemplatesScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: theme.colors.background },
-  toolbar: { paddingHorizontal: theme.space.md, paddingVertical: theme.space.sm },
-  list: { padding: theme.space.md, paddingTop: 0, gap: theme.space.md },
-  card: { gap: theme.space.md },
-  cardTop: { gap: theme.space.xs },
-  cardTitleRow: { flexDirection: 'row', alignItems: 'center', gap: theme.space.sm },
-  cardName: { fontSize: theme.fontSize.title, fontWeight: '700', color: theme.colors.textPrimary },
-  cardNotes: { fontSize: theme.fontSize.body, color: theme.colors.textSecondary, lineHeight: 20 },
-  cardActions: { flexDirection: 'row', alignItems: 'center', gap: theme.space.sm },
-  actionBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    backgroundColor: theme.colors.accent,
-    paddingHorizontal: theme.space.md,
-    paddingVertical: theme.space.sm,
-    borderRadius: theme.radius.md,
-  },
-  actionStart: { color: theme.colors.background, fontWeight: '700', fontSize: theme.fontSize.body },
-  actionGhost: {
-    paddingHorizontal: theme.space.md,
-    paddingVertical: theme.space.sm,
-    borderRadius: theme.radius.md,
-    borderWidth: 1,
-    borderColor: theme.colors.border,
-  },
-  actionGhostText: { color: theme.colors.textPrimary, fontWeight: '600' },
-  empty: {
-    textAlign: 'center',
-    color: theme.colors.textMuted,
-    marginTop: 32,
-    paddingHorizontal: theme.space.lg,
-    lineHeight: 22,
-  },
-});
+const createStyles = (theme: AppTheme) =>
+  StyleSheet.create({
+    screen: { flex: 1, backgroundColor: theme.colors.background },
+    toolbar: { paddingHorizontal: theme.space.md, paddingVertical: theme.space.sm },
+    list: { padding: theme.space.md, paddingTop: 0, gap: theme.space.md },
+    card: { gap: theme.space.md },
+    cardTop: { gap: theme.space.xs },
+    cardTitleRow: { flexDirection: 'row', alignItems: 'center', gap: theme.space.sm },
+    cardName: { fontSize: theme.fontSize.title, fontWeight: '700', color: theme.colors.textPrimary },
+    cardNotes: { fontSize: theme.fontSize.body, color: theme.colors.textSecondary, lineHeight: 20 },
+    cardActions: { flexDirection: 'row', alignItems: 'center', gap: theme.space.sm },
+    actionBtn: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 6,
+      backgroundColor: theme.colors.accent,
+      paddingHorizontal: theme.space.md,
+      paddingVertical: theme.space.sm,
+      borderRadius: theme.radius.md,
+    },
+    actionStart: { color: theme.colors.background, fontWeight: '700', fontSize: theme.fontSize.body },
+    actionGhost: {
+      paddingHorizontal: theme.space.md,
+      paddingVertical: theme.space.sm,
+      borderRadius: theme.radius.md,
+      borderWidth: 1,
+      borderColor: theme.colors.border,
+    },
+    actionGhostText: { color: theme.colors.textPrimary, fontWeight: '600' },
+    empty: {
+      textAlign: 'center',
+      color: theme.colors.textMuted,
+      marginTop: 32,
+      paddingHorizontal: theme.space.lg,
+      lineHeight: 22,
+    },
+  });

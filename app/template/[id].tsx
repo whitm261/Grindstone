@@ -14,10 +14,12 @@ import {
   View,
 } from 'react-native';
 
+import { useAppTheme } from '@/components/theme/AppThemeProvider';
+import { useThemedStyles } from '@/components/theme/useThemedStyles';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { TextField } from '@/components/ui/TextField';
-import { theme } from '@/constants/theme';
+import type { AppTheme } from '@/constants/theme';
 import type { Exercise } from '@/db/schema';
 import {
   getTemplateDetail,
@@ -29,6 +31,8 @@ import {
 type Block = { exerciseId: string; exerciseName: string; sets: Array<{ reps: number; weight: number }> };
 
 export default function EditTemplateScreen() {
+  const theme = useAppTheme();
+  const styles = useThemedStyles(createStyles);
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
   const navigation = useNavigation();
@@ -268,57 +272,58 @@ export default function EditTemplateScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  flex: { flex: 1, backgroundColor: theme.colors.background },
-  content: { padding: theme.space.md, paddingBottom: 48 },
-  label: {
-    fontSize: theme.fontSize.caption,
-    fontWeight: '600',
-    color: theme.colors.textMuted,
-    marginBottom: theme.space.sm,
-    textTransform: 'uppercase',
-    letterSpacing: 0.6,
-  },
-  mt: { marginTop: theme.space.md },
-  rowBetween: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginTop: theme.space.md,
-  },
-  addLink: { flexDirection: 'row', alignItems: 'center' },
-  addLinkText: { color: theme.colors.accent, fontWeight: '700', fontSize: theme.fontSize.body },
-  hint: { color: theme.colors.textSecondary, marginVertical: theme.space.md, lineHeight: 22 },
-  block: { marginBottom: theme.space.md },
-  blockHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  blockTitle: { fontSize: theme.fontSize.title, fontWeight: '700', color: theme.colors.textPrimary },
-  setRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: theme.space.sm,
-    marginTop: theme.space.sm,
-  },
-  setIdx: { width: 44, color: theme.colors.textSecondary, fontSize: theme.fontSize.caption },
-  setInput: { flex: 1, minHeight: 44, paddingVertical: 8 },
-  x: { color: theme.colors.textMuted },
-  addSet: { marginTop: theme.space.sm },
-  addSetText: { color: theme.colors.accent, fontWeight: '600' },
-  actions: { marginTop: theme.space.lg },
-  modalBackdrop: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.6)',
-    justifyContent: 'flex-end',
-    padding: theme.space.md,
-  },
-  modalCard: { maxHeight: '70%' },
-  modalTitle: {
-    fontSize: theme.fontSize.title,
-    fontWeight: '700',
-    color: theme.colors.textPrimary,
-    marginBottom: theme.space.md,
-  },
-  modalList: { maxHeight: 320 },
-  modalEmpty: { paddingVertical: theme.space.md, gap: theme.space.md, alignItems: 'stretch' },
-  pickerRow: { paddingVertical: theme.space.md, borderBottomWidth: 1, borderBottomColor: theme.colors.border },
-  pickerName: { fontSize: theme.fontSize.body, color: theme.colors.textPrimary },
-});
+const createStyles = (theme: AppTheme) =>
+  StyleSheet.create({
+    flex: { flex: 1, backgroundColor: theme.colors.background },
+    content: { padding: theme.space.md, paddingBottom: 48 },
+    label: {
+      fontSize: theme.fontSize.caption,
+      fontWeight: '600',
+      color: theme.colors.textMuted,
+      marginBottom: theme.space.sm,
+      textTransform: 'uppercase',
+      letterSpacing: 0.6,
+    },
+    mt: { marginTop: theme.space.md },
+    rowBetween: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      marginTop: theme.space.md,
+    },
+    addLink: { flexDirection: 'row', alignItems: 'center' },
+    addLinkText: { color: theme.colors.accent, fontWeight: '700', fontSize: theme.fontSize.body },
+    hint: { color: theme.colors.textSecondary, marginVertical: theme.space.md, lineHeight: 22 },
+    block: { marginBottom: theme.space.md },
+    blockHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+    blockTitle: { fontSize: theme.fontSize.title, fontWeight: '700', color: theme.colors.textPrimary },
+    setRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: theme.space.sm,
+      marginTop: theme.space.sm,
+    },
+    setIdx: { width: 44, color: theme.colors.textSecondary, fontSize: theme.fontSize.caption },
+    setInput: { flex: 1, minHeight: 44, paddingVertical: 8 },
+    x: { color: theme.colors.textMuted },
+    addSet: { marginTop: theme.space.sm },
+    addSetText: { color: theme.colors.accent, fontWeight: '600' },
+    actions: { marginTop: theme.space.lg },
+    modalBackdrop: {
+      flex: 1,
+      backgroundColor: 'rgba(0,0,0,0.6)',
+      justifyContent: 'flex-end',
+      padding: theme.space.md,
+    },
+    modalCard: { maxHeight: '70%' },
+    modalTitle: {
+      fontSize: theme.fontSize.title,
+      fontWeight: '700',
+      color: theme.colors.textPrimary,
+      marginBottom: theme.space.md,
+    },
+    modalList: { maxHeight: 320 },
+    modalEmpty: { paddingVertical: theme.space.md, gap: theme.space.md, alignItems: 'stretch' },
+    pickerRow: { paddingVertical: theme.space.md, borderBottomWidth: 1, borderBottomColor: theme.colors.border },
+    pickerName: { fontSize: theme.fontSize.body, color: theme.colors.textPrimary },
+  });

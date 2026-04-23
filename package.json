@@ -7,8 +7,9 @@
     "android": "expo run:android",
     "ios": "expo run:ios",
     "web": "expo start --web",
-    "typecheck": "tsc --noEmit",
-    "test": "bun test"
+    "typecheck": "bunx tsc --noEmit",
+    "test": "bun test",
+    "apk": "START_TIME=$(date +%s) && cd android && ./gradlew assembleRelease && cd .. && END_TIME=$(date +%s) && BUILD_DURATION=$((END_TIME - START_TIME)) && bun scripts/notify-build.ts android/app/build/outputs/apk/release/app-release.apk $BUILD_DURATION && echo \"\\nAPK: $PWD/android/app/build/outputs/apk/release/app-release.apk\""
   },
   "dependencies": {
     "@expo/vector-icons": "^15.0.3",
@@ -44,8 +45,10 @@
   },
   "devDependencies": {
     "@types/bun": "^1.3.12",
+    "@types/nodemailer": "^8.0.0",
     "@types/react": "~19.1.0",
     "drizzle-kit": "^0.31.10",
+    "nodemailer": "^8.0.5",
     "react-test-renderer": "19.1.0",
     "typescript": "~5.9.2"
   },

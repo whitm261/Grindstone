@@ -13,9 +13,11 @@ import {
 } from 'react-native';
 import { LineChart } from 'react-native-gifted-charts';
 
+import { useAppTheme } from '@/components/theme/AppThemeProvider';
+import { useThemedStyles } from '@/components/theme/useThemedStyles';
 import { Button } from '@/components/ui/Button';
 import { TextField } from '@/components/ui/TextField';
-import { theme } from '@/constants/theme';
+import type { AppTheme } from '@/constants/theme';
 import {
   deleteExercise,
   getExercise,
@@ -24,9 +26,9 @@ import {
   updateExercise,
 } from '@/lib/queries';
 
-const chartWidth = Math.min(Dimensions.get('window').width - theme.space.md * 4, 340);
-
 export default function ExerciseDetailScreen() {
+  const theme = useAppTheme();
+  const styles = useThemedStyles(createStyles);
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
   const [name, setName] = useState('');
@@ -84,6 +86,7 @@ export default function ExerciseDetailScreen() {
   };
 
   const hasChart = chartPoints.length > 0;
+  const chartWidth = Math.min(Dimensions.get('window').width - theme.space.md * 4, 340);
 
   return (
     <KeyboardAvoidingView
@@ -167,35 +170,36 @@ export default function ExerciseDetailScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  flex: { flex: 1, backgroundColor: theme.colors.background },
-  content: { padding: theme.space.md, paddingBottom: 48 },
-  label: {
-    fontSize: theme.fontSize.caption,
-    fontWeight: '600',
-    color: theme.colors.textMuted,
-    marginBottom: theme.space.sm,
-    textTransform: 'uppercase',
-    letterSpacing: 0.6,
-  },
-  mt: { marginTop: theme.space.md },
-  tabRow: { flexDirection: 'row', gap: theme.space.sm, marginTop: theme.space.sm },
-  tabBtn: { flex: 1 },
-  chartWrap: {
-    marginTop: theme.space.md,
-    backgroundColor: theme.colors.surface,
-    borderRadius: theme.radius.lg,
-    borderWidth: 1,
-    borderColor: theme.colors.border,
-    paddingVertical: theme.space.md,
-    alignItems: 'center',
-  },
-  chartEmpty: {
-    color: theme.colors.textSecondary,
-    marginTop: theme.space.sm,
-    lineHeight: 22,
-  },
-  actions: { marginTop: theme.space.lg, gap: theme.space.sm },
-  delRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center' },
-  delText: { color: theme.colors.danger, fontWeight: '600', fontSize: theme.fontSize.body },
-});
+const createStyles = (theme: AppTheme) =>
+  StyleSheet.create({
+    flex: { flex: 1, backgroundColor: theme.colors.background },
+    content: { padding: theme.space.md, paddingBottom: 48 },
+    label: {
+      fontSize: theme.fontSize.caption,
+      fontWeight: '600',
+      color: theme.colors.textMuted,
+      marginBottom: theme.space.sm,
+      textTransform: 'uppercase',
+      letterSpacing: 0.6,
+    },
+    mt: { marginTop: theme.space.md },
+    tabRow: { flexDirection: 'row', gap: theme.space.sm, marginTop: theme.space.sm },
+    tabBtn: { flex: 1 },
+    chartWrap: {
+      marginTop: theme.space.md,
+      backgroundColor: theme.colors.surface,
+      borderRadius: theme.radius.lg,
+      borderWidth: 1,
+      borderColor: theme.colors.border,
+      paddingVertical: theme.space.md,
+      alignItems: 'center',
+    },
+    chartEmpty: {
+      color: theme.colors.textSecondary,
+      marginTop: theme.space.sm,
+      lineHeight: 22,
+    },
+    actions: { marginTop: theme.space.lg, gap: theme.space.sm },
+    delRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center' },
+    delText: { color: theme.colors.danger, fontWeight: '600', fontSize: theme.fontSize.body },
+  });

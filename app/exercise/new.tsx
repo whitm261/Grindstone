@@ -2,12 +2,14 @@ import { useRouter } from 'expo-router';
 import { useState } from 'react';
 import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, View } from 'react-native';
 
+import { useThemedStyles } from '@/components/theme/useThemedStyles';
 import { Button } from '@/components/ui/Button';
 import { TextField } from '@/components/ui/TextField';
-import { theme } from '@/constants/theme';
+import type { AppTheme } from '@/constants/theme';
 import { createExercise } from '@/lib/queries';
 
 export default function NewExerciseScreen() {
+  const styles = useThemedStyles(createStyles);
   const router = useRouter();
   const [name, setName] = useState('');
   const [notes, setNotes] = useState('');
@@ -50,17 +52,18 @@ export default function NewExerciseScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  flex: { flex: 1, backgroundColor: theme.colors.background },
-  content: { padding: theme.space.md, paddingBottom: 48 },
-  label: {
-    fontSize: theme.fontSize.caption,
-    fontWeight: '600',
-    color: theme.colors.textMuted,
-    marginBottom: theme.space.sm,
-    textTransform: 'uppercase',
-    letterSpacing: 0.6,
-  },
-  mt: { marginTop: theme.space.md },
-  actions: { marginTop: theme.space.lg },
-});
+const createStyles = (theme: AppTheme) =>
+  StyleSheet.create({
+    flex: { flex: 1, backgroundColor: theme.colors.background },
+    content: { padding: theme.space.md, paddingBottom: 48 },
+    label: {
+      fontSize: theme.fontSize.caption,
+      fontWeight: '600',
+      color: theme.colors.textMuted,
+      marginBottom: theme.space.sm,
+      textTransform: 'uppercase',
+      letterSpacing: 0.6,
+    },
+    mt: { marginTop: theme.space.md },
+    actions: { marginTop: theme.space.lg },
+  });

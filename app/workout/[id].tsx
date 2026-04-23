@@ -15,10 +15,12 @@ import {
   View,
 } from 'react-native';
 
+import { useAppTheme } from '@/components/theme/AppThemeProvider';
+import { useThemedStyles } from '@/components/theme/useThemedStyles';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { TextField } from '@/components/ui/TextField';
-import { theme } from '@/constants/theme';
+import type { AppTheme } from '@/constants/theme';
 import type { Exercise, SetLog } from '@/db/schema';
 import type { LastExerciseData, WorkoutDetail } from '@/lib/queries';
 import {
@@ -48,6 +50,8 @@ function SetRow({
   onUpdateReps: (n: number) => void;
   onUpdateWeight: (n: number) => void;
 }) {
+  const theme = useAppTheme();
+  const styles = useThemedStyles(createStyles);
   const [reps, setReps] = useState(String(set.reps));
   const [weight, setWeight] = useState(String(set.weight));
   const debounceR = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
@@ -129,6 +133,8 @@ function SetRow({
 }
 
 export default function WorkoutScreen() {
+  const theme = useAppTheme();
+  const styles = useThemedStyles(createStyles);
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
   const [detail, setDetail] = useState<WorkoutDetail | null>(null);
@@ -393,75 +399,76 @@ export default function WorkoutScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: theme.colors.background },
-  center: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: theme.colors.background },
-  loading: { color: theme.colors.textMuted },
-  scroll: { padding: theme.space.md, paddingBottom: 48 },
-  titleInput: {
-    fontSize: theme.fontSize.headline,
-    fontWeight: '700',
-    marginBottom: theme.space.xs,
-  },
-  started: { fontSize: theme.fontSize.caption, color: theme.colors.textMuted, marginBottom: theme.space.md },
-  toolbar: { gap: theme.space.sm, marginBottom: theme.space.md },
-  addExerciseBtn: { flexDirection: 'row', alignItems: 'center', marginBottom: theme.space.md },
-  addExerciseText: { color: theme.colors.accent, fontWeight: '700', fontSize: theme.fontSize.body },
-  block: { marginBottom: theme.space.md },
-  blockTitleRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  blockTitleLeft: { flexDirection: 'row', alignItems: 'center', gap: theme.space.sm, flex: 1 },
-  exerciseName: { fontSize: theme.fontSize.title, fontWeight: '700', color: theme.colors.textPrimary, flex: 1 },
-  blockActions: { flexDirection: 'row', gap: theme.space.md },
-  lastSession: {
-    fontSize: theme.fontSize.caption,
-    color: theme.colors.textMuted,
-    marginTop: theme.space.xs,
-    marginBottom: theme.space.xs,
-  },
-  sets: { marginTop: theme.space.sm, gap: theme.space.sm },
-  setRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: theme.space.sm,
-    padding: theme.space.sm,
-    borderRadius: theme.radius.md,
-    borderWidth: 1,
-    borderColor: theme.colors.border,
-    backgroundColor: theme.colors.surfaceElevated,
-  },
-  checkWrap: { padding: 4 },
-  setLabel: { width: 28, color: theme.colors.textSecondary, fontSize: theme.fontSize.caption },
-  setInput: { flex: 1, minHeight: 44 },
-  times: { color: theme.colors.textMuted },
-  setButtons: { flexDirection: 'row', gap: theme.space.sm, marginTop: theme.space.sm },
-  smallBtn: {
-    paddingVertical: theme.space.sm,
-    paddingHorizontal: theme.space.md,
-    borderRadius: theme.radius.md,
-    borderWidth: 1,
-    borderColor: theme.colors.border,
-  },
-  smallBtnText: { color: theme.colors.accent, fontWeight: '600' },
-  empty: { color: theme.colors.textSecondary, textAlign: 'center', marginTop: theme.space.lg },
-  modalBackdrop: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.6)',
-    justifyContent: 'flex-end',
-    padding: theme.space.md,
-  },
-  modalCard: { maxHeight: '75%' },
-  modalTitle: {
-    fontSize: theme.fontSize.title,
-    fontWeight: '700',
-    color: theme.colors.textPrimary,
-    marginBottom: theme.space.md,
-  },
-  modalList: { maxHeight: 360 },
-  modalEmpty: { paddingVertical: theme.space.md, gap: theme.space.md, alignItems: 'stretch' },
-  pickerRow: { paddingVertical: theme.space.md, borderBottomWidth: 1, borderBottomColor: theme.colors.border },
-  pickerName: { fontSize: theme.fontSize.body, color: theme.colors.textPrimary },
-});
+const createStyles = (theme: AppTheme) =>
+  StyleSheet.create({
+    screen: { flex: 1, backgroundColor: theme.colors.background },
+    center: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: theme.colors.background },
+    loading: { color: theme.colors.textMuted },
+    scroll: { padding: theme.space.md, paddingBottom: 48 },
+    titleInput: {
+      fontSize: theme.fontSize.headline,
+      fontWeight: '700',
+      marginBottom: theme.space.xs,
+    },
+    started: { fontSize: theme.fontSize.caption, color: theme.colors.textMuted, marginBottom: theme.space.md },
+    toolbar: { gap: theme.space.sm, marginBottom: theme.space.md },
+    addExerciseBtn: { flexDirection: 'row', alignItems: 'center', marginBottom: theme.space.md },
+    addExerciseText: { color: theme.colors.accent, fontWeight: '700', fontSize: theme.fontSize.body },
+    block: { marginBottom: theme.space.md },
+    blockTitleRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+    },
+    blockTitleLeft: { flexDirection: 'row', alignItems: 'center', gap: theme.space.sm, flex: 1 },
+    exerciseName: { fontSize: theme.fontSize.title, fontWeight: '700', color: theme.colors.textPrimary, flex: 1 },
+    blockActions: { flexDirection: 'row', gap: theme.space.md },
+    lastSession: {
+      fontSize: theme.fontSize.caption,
+      color: theme.colors.textMuted,
+      marginTop: theme.space.xs,
+      marginBottom: theme.space.xs,
+    },
+    sets: { marginTop: theme.space.sm, gap: theme.space.sm },
+    setRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: theme.space.sm,
+      padding: theme.space.sm,
+      borderRadius: theme.radius.md,
+      borderWidth: 1,
+      borderColor: theme.colors.border,
+      backgroundColor: theme.colors.surfaceElevated,
+    },
+    checkWrap: { padding: 4 },
+    setLabel: { width: 28, color: theme.colors.textSecondary, fontSize: theme.fontSize.caption },
+    setInput: { flex: 1, minHeight: 44 },
+    times: { color: theme.colors.textMuted },
+    setButtons: { flexDirection: 'row', gap: theme.space.sm, marginTop: theme.space.sm },
+    smallBtn: {
+      paddingVertical: theme.space.sm,
+      paddingHorizontal: theme.space.md,
+      borderRadius: theme.radius.md,
+      borderWidth: 1,
+      borderColor: theme.colors.border,
+    },
+    smallBtnText: { color: theme.colors.accent, fontWeight: '600' },
+    empty: { color: theme.colors.textSecondary, textAlign: 'center', marginTop: theme.space.lg },
+    modalBackdrop: {
+      flex: 1,
+      backgroundColor: 'rgba(0,0,0,0.6)',
+      justifyContent: 'flex-end',
+      padding: theme.space.md,
+    },
+    modalCard: { maxHeight: '75%' },
+    modalTitle: {
+      fontSize: theme.fontSize.title,
+      fontWeight: '700',
+      color: theme.colors.textPrimary,
+      marginBottom: theme.space.md,
+    },
+    modalList: { maxHeight: 360 },
+    modalEmpty: { paddingVertical: theme.space.md, gap: theme.space.md, alignItems: 'stretch' },
+    pickerRow: { paddingVertical: theme.space.md, borderBottomWidth: 1, borderBottomColor: theme.colors.border },
+    pickerName: { fontSize: theme.fontSize.body, color: theme.colors.textPrimary },
+  });

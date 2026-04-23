@@ -3,7 +3,13 @@ import { nanoid } from 'nanoid/non-secure';
 
 import { getDb } from '@/db/client';
 import {
+  activeMesocycleMaxes,
+  activeMesocycles,
   exercises,
+  mesocycleExercises,
+  mesocycleSets,
+  mesocycleWorkouts,
+  mesocycles,
   setLogs,
   templateExercises,
   templateSets,
@@ -637,4 +643,366 @@ export function getLastWorkoutDataForExercises(
   }
 
   return result;
+}
+
+// --- Mesocycles ---
+
+export function listMesocycles() {
+  return getDb()
+    .select()
+    .from(mesocycles)
+    .orderBy(desc(mesocycles.createdAt))
+    .all();
+}
+
+export type MesocycleDetail = {
+  mesocycle: typeof mesocycles.$inferSelect;
+  workouts: Array<{
+    workout: typeof mesocycleWorkouts.$inferSelect;
+    exercises: Array<{
+      mesoExercise: typeof mesocycleExercises.$inferSelect;
+      exercise: typeof exercises.$inferSelect;
+      sets: (typeof mesocycleSets.$inferSelect)[];
+    }>;
+  }>;
+};
+
+export function getMesocycleDetail(mesocycleId: string): MesocycleDetail | null {
+  const db = getDb();
+  const meso = db
+    .select()
+    .from(mesocycles)
+    .where(eq(mesocycles.id, mesocycleId))
+    .get();
+  if (!meso) return null;
+
+  const mws = db
+    .select()
+    .from(mesocycleWorkouts)
+    .where(eq(mesocycleWorkouts.mesocycleId, mesocycleId))
+    .orderBy(asc(mesocycleWorkouts.dayNumber))
+    .all();
+
+  const workouts: MesocycleDetail['workouts'] = [];
+
+  for (const mw of mws) {
+    const mes = db
+      .select()
+      .from(mesocycleExercises)
+      .where(eq(mesocycleExercises.mesocycleWorkoutId, mw.id))
+      .orderBy(asc(mesocycleExercises.sortOrder))
+      .all();
+
+    const exercisesInMeso: MesocycleDetail['workouts'][0]['exercises'] = [];
+
+    for (const me of mes) {
+      const ex = db.select().from(exercises).where(eq(exercises.id, me.exerciseId)).get();
+      if (!ex) continue;
+
+      const sets = db
+        .select()
+        .from(mesocycleSets)
+        .where(eq(mesocycleSets.mesocycleExerciseId, me.id))
+        .orderBy(asc(mesocycleSets.weekNumber), asc(mesocycleSets.index))
+        .all();
+
+      exercisesInMeso.push({ mesoExercise: me, exercise: ex, sets });
+    }
+
+    workouts.push({ workout: mw, exercises: exercisesInMeso });
+  }
+
+  return { mesocycle: meso, workouts };
+}
+
+export function createMesocycle(name: string, weeks: number, notes = '') {
+  const id = nanoid();
+  const row = {
+    id,
+    name: name.trim(),
+    weeks,
+    notes: notes.trim(),
+    createdAt: nowIso(),
+  };
+  getDb().insert(mesocycles).values(row).run();
+  return row;
+}
+
+/** 
+ * Replace mesocycle structure.
+ * structure: Array of workout days, each with exercises.
+ * Focus exercises have sets for EVERY week.
+ * Accessory exercises have sets with weekNumber = null.
+ */
+export function replaceMesocycleStructure(
+  mesocycleId: string,
+  structure: Array<{
+    name: string;
+    dayNumber: number;
+    exercises: Array<{
+      exerciseId: string;
+      isFocus: boolean;
+      sets: Array<{
+        weekNumber: number | null;
+        reps: number;
+        percentage: number | null;
+      }>;
+    }>;
+  }>,
+) {
+  getDb().transaction((tx) => {
+    // Delete existing
+    const existingWorkouts = tx
+      .select({ id: mesocycleWorkouts.id })
+      .from(mesocycleWorkouts)
+      .where(eq(mesocycleWorkouts.mesocycleId, mesocycleId))
+      .all();
+    
+    for (const mw of existingWorkouts) {
+      const existingExercises = tx
+        .select({ id: mesocycleExercises.id })
+        .from(mesocycleExercises)
+        .where(eq(mesocycleExercises.mesocycleWorkoutId, mw.id))
+        .all();
+      
+      for (const me of existingExercises) {
+        tx.delete(mesocycleSets).where(eq(mesocycleSets.mesocycleExerciseId, me.id)).run();
+      }
+      tx.delete(mesocycleExercises).where(eq(mesocycleExercises.mesocycleWorkoutId, mw.id)).run();
+    }
+    tx.delete(mesocycleWorkouts).where(eq(mesocycleWorkouts.mesocycleId, mesocycleId)).run();
+
+    // Insert new
+    for (const sWorkout of structure) {
+      const mwId = nanoid();
+      tx.insert(mesocycleWorkouts)
+        .values({
+          id: mwId,
+          mesocycleId,
+          dayNumber: sWorkout.dayNumber,
+          name: sWorkout.name,
+        })
+        .run();
+
+      let order = 0;
+      for (const sEx of sWorkout.exercises) {
+        const meId = nanoid();
+        tx.insert(mesocycleExercises)
+          .values({
+            id: meId,
+            mesocycleWorkoutId: mwId,
+            exerciseId: sEx.exerciseId,
+            sortOrder: order++,
+            isFocus: sEx.isFocus,
+          })
+          .run();
+
+        let setIdx = 0;
+        for (const sSet of sEx.sets) {
+          tx.insert(mesocycleSets)
+            .values({
+              id: nanoid(),
+              mesocycleExerciseId: meId,
+              weekNumber: sSet.weekNumber,
+              index: setIdx++,
+              targetReps: sSet.reps,
+              targetPercentage: sSet.percentage,
+            })
+            .run();
+        }
+      }
+    }
+  }, { behavior: 'immediate' });
+}
+
+export function deleteMesocycle(id: string) {
+  getDb().delete(mesocycles).where(eq(mesocycles.id, id)).run();
+}
+
+// --- Active Mesocycles ---
+
+export function startActiveMesocycle(
+  mesocycleId: string,
+  maxes: Array<{ exerciseId: string; weight: number }>,
+) {
+  const meso = getDb()
+    .select()
+    .from(mesocycles)
+    .where(eq(mesocycles.id, mesocycleId))
+    .get();
+  if (!meso) return null;
+
+  const id = nanoid();
+  return getDb().transaction((tx) => {
+    tx.insert(activeMesocycles)
+      .values({
+        id,
+        mesocycleId,
+        name: meso.name,
+        startedAt: nowIso(),
+      })
+      .run();
+
+    for (const m of maxes) {
+      tx.insert(activeMesocycleMaxes)
+        .values({
+          id: nanoid(),
+          activeMesocycleId: id,
+          exerciseId: m.exerciseId,
+          weight: m.weight,
+        })
+        .run();
+    }
+    return id;
+  }, { behavior: 'immediate' });
+}
+
+export function listActiveMesocycles() {
+  return getDb()
+    .select()
+    .from(activeMesocycles)
+    .where(isNull(activeMesocycles.completedAt))
+    .orderBy(desc(activeMesocycles.startedAt))
+    .all();
+}
+
+export function getActiveMesocycleDetail(activeId: string) {
+  const db = getDb();
+  const active = db
+    .select()
+    .from(activeMesocycles)
+    .where(eq(activeMesocycles.id, activeId))
+    .get();
+  if (!active) return null;
+
+  const mesoDetail = getMesocycleDetail(active.mesocycleId);
+  if (!mesoDetail) return null;
+
+  const maxes = db
+    .select()
+    .from(activeMesocycleMaxes)
+    .where(eq(activeMesocycleMaxes.activeMesocycleId, activeId))
+    .all();
+  
+  const workoutsCompleted = db
+    .select()
+    .from(workouts)
+    .where(and(eq(workouts.activeMesocycleId, activeId), isNotNull(workouts.completedAt)))
+    .all();
+
+  return {
+    active,
+    mesoDetail,
+    maxes,
+    workoutsCompleted,
+  };
+}
+
+export function startWorkoutFromMesocycleDay(
+  activeMesocycleId: string,
+  mesocycleWorkoutId: string,
+  weekNumber: number,
+) {
+  const db = getDb();
+  const active = db
+    .select()
+    .from(activeMesocycles)
+    .where(eq(activeMesocycles.id, activeMesocycleId))
+    .get();
+  if (!active) return null;
+
+  const mw = db
+    .select()
+    .from(mesocycleWorkouts)
+    .where(eq(mesocycleWorkouts.id, mesocycleWorkoutId))
+    .get();
+  if (!mw) return null;
+
+  const maxes = db
+    .select()
+    .from(activeMesocycleMaxes)
+    .where(eq(activeMesocycleMaxes.activeMesocycleId, activeMesocycleId))
+    .all();
+  const maxMap = new Map(maxes.map((m) => [m.exerciseId, m.weight]));
+
+  const mes = db
+    .select()
+    .from(mesocycleExercises)
+    .where(eq(mesocycleExercises.mesocycleWorkoutId, mw.id))
+    .orderBy(asc(mesocycleExercises.sortOrder))
+    .all();
+
+  const workoutId = nanoid();
+  return db.transaction((tx) => {
+    tx.insert(workouts)
+      .values({
+        id: workoutId,
+        activeMesocycleId,
+        mesocycleWeek: weekNumber,
+        name: `${mw.name} - W${weekNumber}`,
+        startedAt: nowIso(),
+      })
+      .run();
+
+    for (const me of mes) {
+      const weId = nanoid();
+      tx.insert(workoutExercises)
+        .values({
+          id: weId,
+          workoutId,
+          exerciseId: me.exerciseId,
+          sortOrder: me.sortOrder,
+        })
+        .run();
+
+      const sets = tx
+        .select()
+        .from(mesocycleSets)
+        .where(
+          and(
+            eq(mesocycleSets.mesocycleExerciseId, me.id),
+            // weekNumber is null for accessories (applies to all weeks)
+            me.isFocus 
+              ? eq(mesocycleSets.weekNumber, weekNumber)
+              : isNull(mesocycleSets.weekNumber)
+          )
+        )
+        .orderBy(asc(mesocycleSets.index))
+        .all();
+
+      for (const s of sets) {
+        let targetWeight = 0;
+        if (me.isFocus && s.targetPercentage !== null) {
+          const max = maxMap.get(me.exerciseId) ?? 0;
+          targetWeight = (max * s.targetPercentage) / 100;
+          // Round to nearest 2.5 (common in gyms) or keep as is? 
+          // Let's keep it exact for now, UI can format it.
+        }
+
+        tx.insert(setLogs)
+          .values({
+            id: nanoid(),
+            workoutExerciseId: weId,
+            index: s.index,
+            reps: s.targetReps,
+            weight: targetWeight,
+            completed: false,
+          })
+          .run();
+      }
+    }
+    return tx.select().from(workouts).where(eq(workouts.id, workoutId)).get()!;
+  }, { behavior: 'immediate' });
+}
+
+export function completeActiveMesocycle(id: string) {
+  getDb()
+    .update(activeMesocycles)
+    .set({ completedAt: nowIso() })
+    .where(eq(activeMesocycles.id, id))
+    .run();
+}
+
+export function deleteActiveMesocycle(id: string) {
+  getDb().delete(activeMesocycles).where(eq(activeMesocycles.id, id)).run();
 }

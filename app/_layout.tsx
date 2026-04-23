@@ -10,8 +10,10 @@ import { StyleSheet } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import 'react-native-reanimated';
 
-import { navigationDarkTheme } from '@/constants/navigationTheme';
-import { theme } from '@/constants/theme';
+import { AppThemeProvider, useAppTheme, useThemePreference } from '@/components/theme/AppThemeProvider';
+import { useThemedStyles } from '@/components/theme/useThemedStyles';
+import { createNavigationTheme } from '@/constants/navigationTheme';
+import type { AppTheme } from '@/constants/theme';
 import { getSQLite } from '@/db/client';
 
 export { ErrorBoundary } from 'expo-router';
@@ -34,22 +36,41 @@ export default function RootLayout() {
 
   useEffect(() => {
     getSQLite();
-    void SystemUI.setBackgroundColorAsync(theme.colors.background);
   }, []);
-
-  useEffect(() => {
-    if (loaded) {
-      SplashScreen.hideAsync();
-    }
-  }, [loaded]);
 
   if (!loaded) {
     return null;
   }
 
   return (
+    <AppThemeProvider>
+      <RootNavigator fontsLoaded={loaded} />
+    </AppThemeProvider>
+  );
+}
+
+function RootNavigator({ fontsLoaded }: { fontsLoaded: boolean }) {
+  const theme = useAppTheme();
+  const { ready } = useThemePreference();
+  const styles = useThemedStyles(createStyles);
+
+  useEffect(() => {
+    void SystemUI.setBackgroundColorAsync(theme.colors.background);
+  }, [theme]);
+
+  useEffect(() => {
+    if (fontsLoaded && ready) {
+      void SplashScreen.hideAsync();
+    }
+  }, [fontsLoaded, ready]);
+
+  if (!ready) {
+    return null;
+  }
+
+  return (
     <GestureHandlerRootView style={styles.root}>
-      <ThemeProvider value={navigationDarkTheme}>
+      <ThemeProvider value={createNavigationTheme(theme)}>
         <StatusBar style="light" />
         <Stack
           screenOptions={{
@@ -68,12 +89,14 @@ export default function RootLayout() {
           <Stack.Screen name="template/new" options={{ title: 'New template' }} />
           <Stack.Screen name="template/[id]" options={{ title: 'Template' }} />
           <Stack.Screen name="session/[id]" options={{ title: 'Session' }} />
+          <Stack.Screen name="settings" options={{ title: 'Settings' }} />
         </Stack>
       </ThemeProvider>
     </GestureHandlerRootView>
   );
 }
 
-const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: theme.colors.background },
-});
+const createStyles = (theme: AppTheme) =>
+  StyleSheet.create({
+    root: { flex: 1, backgroundColor: theme.colors.background },
+  });

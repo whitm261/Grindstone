@@ -1,9 +1,9 @@
 import FontAwesome from '@expo/vector-icons/FontAwesome';
-import { Link, Tabs } from 'expo-router';
+import { Link, Tabs, type Href } from 'expo-router';
 import React from 'react';
 import { Pressable } from 'react-native';
 
-import { theme } from '@/constants/theme';
+import { useAppTheme } from '@/components/theme/AppThemeProvider';
 import { useClientOnlyValue } from '@/components/useClientOnlyValue';
 
 function TabBarIcon(props: {
@@ -14,6 +14,8 @@ function TabBarIcon(props: {
 }
 
 export default function TabLayout() {
+  const theme = useAppTheme();
+
   return (
     <Tabs
       screenOptions={{
@@ -34,6 +36,13 @@ export default function TabLayout() {
         options={{
           title: 'Home',
           tabBarIcon: ({ color }) => <TabBarIcon name="home" color={color} />,
+          headerRight: () => (
+            <Link href={'/settings' as Href} asChild>
+              <Pressable hitSlop={12} style={{ marginRight: 8, padding: 6 }}>
+                <FontAwesome name="gear" size={20} color={theme.colors.accent} />
+              </Pressable>
+            </Link>
+          ),
         }}
       />
       <Tabs.Screen
@@ -55,6 +64,13 @@ export default function TabLayout() {
         options={{
           title: 'Templates',
           tabBarIcon: ({ color }) => <TabBarIcon name="clipboard" color={color} />,
+        }}
+      />
+      <Tabs.Screen
+        name="mesocycles"
+        options={{
+          title: 'Blocks',
+          tabBarIcon: ({ color }) => <TabBarIcon name="calendar" color={color} />,
         }}
       />
       <Tabs.Screen
