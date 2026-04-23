@@ -1,56 +1,48 @@
 # MovingWeight
 
-Android-focused strength-training tracker built with **Expo (SDK 54)**, **React Native**, and **TypeScript**. Exercises, reusable workout templates, live session logging (sets, reps, weight), and progress charts are stored **locally** in **SQLite** via **Drizzle ORM**.
+MovingWeight is a local-first strength training tracker for Android. It is built for lifters who want to log workouts quickly, reuse workout structures, and review progress without creating an account or sending training data to a server.
 
-## Requirements
+## What You Can Do
 
-- [Bun](https://bun.sh) (package manager and scripts)
-- Android Studio / device or emulator for `android`
+- Build your own exercise library with notes and cues.
+- Create workout templates so repeat sessions are fast to start.
+- Run empty workouts when you want to train without a preset plan.
+- Track sets, reps, and weight during a live session.
+- Review completed workouts in history.
+- Follow multi-week training blocks with mesocycles.
+- Check progress trends for individual exercises.
+- Choose from multiple built-in app themes.
 
-## Scripts
+## Why Use It
+
+- **Fast logging**: the workout screen is designed for in-gym use, with large controls and minimal friction.
+- **Flexible planning**: use templates for repeatable sessions or build workouts on the fly.
+- **Private by default**: your training data stays on your device.
+- **No account required**: there is no sign-in, sync setup, or cloud dependency.
+
+## Getting Started
+
+If you want to run the app locally:
 
 ```bash
 bun install
-bun run start          # Expo dev server
-bun run android        # Open on Android
-bun run typecheck      # Typecheck
-bun apk                # Build APK locally
+bun run start
+bun run android
 ```
 
-## Features
+## Privacy
 
-- **Exercise library** — reusable movements with optional notes.
-- **Workout templates** — ordered exercises with default sets (reps/weight); **Start** copies into an active session without changing the template.
-- **Mesocycles** — 8-12 week training blocks with week-to-week progression. Supports SBD (Squat, Bench, Deadlift) focus with percentage-based 1RM progression and dynamic accessories.
-- **Empty workout** — add exercises and sets on the fly (same session model).
-- **In-workout screen** — large controls, debounced saves, set completion with haptics and motion, reorder/remove exercises, collapse blocks.
-- **History** — completed sessions with read-only detail.
-- **Themes & settings** — built-in app themes with on-device persistence and a dedicated settings screen for appearance selection.
-- **Progress** — per-exercise line charts (session volume and max weight) using `react-native-gifted-charts`, styled to match the active theme.
+MovingWeight stores workout data locally on your device. It does not require an account, and it does not send your training history to an external service.
 
-## Project layout
+## Current Highlights
 
+- Exercise library with custom notes
+- Workout templates with default sets
+- Active workout logging with set completion tracking
+- Workout history and exercise progress charts
+- Mesocycle planning for longer training blocks
+- Built-in theme selection in Settings
 
-| Path                           | Role                                               |
-| ------------------------------ | -------------------------------------------------- |
-| `constants/theme.ts`           | Built-in theme definitions and shared design tokens |
-| `constants/navigationTheme.ts` | React Navigation theme mapping                     |
-| `db/schema.ts`                 | Drizzle table definitions                          |
-| `db/init.ts`                   | SQLite DDL + `PRAGMA user_version` migrations      |
-| `db/client.ts`                 | `openDatabaseSync`, FK enforcement, Drizzle client |
-| `lib/queries.ts`               | Data access and chart aggregates                   |
-| `app/(tabs)/`                  | Home, Exercises, Templates, Blocks (Mesocycles), History |
-| `app/workout/[id].tsx`         | Active session logging                             |
-| `app/session/[id].tsx`         | Completed session detail                           |
-| `app/template/`                | Create/edit templates                              |
-| `app/mesocycle/`               | Create/edit mesocycles and active blocks           |
-| `app/exercise/`                | Create/edit exercises + charts                     |
+## For Contributors
 
-
-## Security & privacy
-
-All data stays on-device in the app SQLite file. No accounts or network sync are implemented.
-
-## Agent notes
-
-See [AGENTS.md](./AGENTS.md) for tooling preferences (Bun, documentation expectations).
+Project-specific development instructions live in [AGENTS.md](./AGENTS.md).
