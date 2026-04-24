@@ -31,19 +31,67 @@ type MesoSet = {
   percentage: number | null;
 };
 
+type DraftMesoSet = {
+  weekNumber: number | null;
+  reps: string;
+  percentage: string;
+};
+
 type MesoExercise = {
   exerciseId: string;
   exerciseName: string;
   isFocus: boolean;
-  sets: MesoSet[];
+  sets: DraftMesoSet[];
 };
 
-type MesoDay = {
+type MesoWorkout = {
   id: string; // temp id for UI
   name: string;
-  dayNumber: number;
   exercises: MesoExercise[];
 };
+
+const createDraftId = () => Math.random().toString(36).slice(2, 11);
+
+const normalizeNumericInput = (value: string) => value.replace(',', '.');
+
+const parseWholeNumber = (value: string, fallback: number) => {
+  const parsed = parseInt(value, 10);
+  return Number.isFinite(parsed) ? parsed : fallback;
+};
+
+const parsePercentage = (value: string) => {
+  const normalized = normalizeNumericInput(value).trim();
+  if (!normalized) return null;
+  const parsed = parseFloat(normalized);
+  return Number.isFinite(parsed) ? parsed : null;
+};
+
+const createAccessorySet = (reps = '10'): DraftMesoSet => ({
+  weekNumber: null,
+  reps,
+  percentage: '',
+});
+
+const createFocusSets = (weeks: number): DraftMesoSet[] =>
+  Array.from({ length: weeks }, (_, index) => ({
+    weekNumber: index + 1,
+    reps: '5',
+    percentage: '70',
+  }));
+
+const createWorkoutName = (order: number) => `Workout ${order}`;
+
+function cloneExercise(exercise: MesoExercise): MesoExercise {
+  return {
+    ...exercise,
+    sets: exercise.sets.map((set) => ({ ...set })),
+  };
+}
+
+function appendCloneSuffix(name: string) {
+  const trimmed = name.trim();
+  return trimmed ? `${trimmed} Copy` : 'Workout Copy';
+}
 
 export default function MesocycleBuilderScreen() {
   const theme = useAppTheme();
@@ -52,8 +100,8 @@ export default function MesocycleBuilderScreen() {
   const router = useRouter();
   const [name, setName] = useState('');
   const [weeks, setWeeks] = useState(1);
-  const [days, setDays] = useState<MesoDay[]>([]);
-  const [exercisePicker, setExercisePicker] = useState<{ dayId: string } | null>(null);
+  const [workouts, setWorkouts] = useState<MesoWorkout[]>([]);
+  const [exercisePicker, setExercisePicker] = useState<{ workoutId: string } | null>(null);
   const [allExercises, setAllExercises] = useState<Exercise[]>([]);
 
   const load = useCallback(() => {
@@ -64,26 +112,24 @@ export default function MesocycleBuilderScreen() {
     setAllExercises(listExercises());
 
     if (d.workouts.length > 0) {
-      setDays(
+      setWorkouts(
         d.workouts.map((w) => ({
           id: w.workout.id,
           name: w.workout.name,
-          dayNumber: w.workout.dayNumber,
           exercises: w.exercises.map((e) => ({
             exerciseId: e.exercise.id,
             exerciseName: e.exercise.name,
             isFocus: e.mesoExercise.isFocus,
             sets: e.sets.map((s) => ({
               weekNumber: s.weekNumber,
-              reps: s.targetReps,
-              percentage: s.targetPercentage,
+              reps: String(s.targetReps),
+              percentage: s.targetPercentage === null ? '' : String(s.targetPercentage),
             })),
           })),
-        }))
+        })),
       );
     } else {
-      // Default one day
-      setDays([{ id: 'default-1', name: 'Day 1', dayNumber: 1, exercises: [] }]);
+      setWorkouts([{ id: createDraftId(), name: createWorkoutName(1), exercises: [] }]);
     }
   }, [id]);
 
@@ -92,16 +138,16 @@ export default function MesocycleBuilderScreen() {
   }, [load]);
 
   const save = () => {
-    const structure = days.map((d) => ({
-      name: d.name,
-      dayNumber: d.dayNumber,
-      exercises: d.exercises.map((e) => ({
+    const structure = workouts.map((workout, index) => ({
+      name: workout.name.trim() || createWorkoutName(index + 1),
+      dayNumber: index + 1,
+      exercises: workout.exercises.map((e) => ({
         exerciseId: e.exerciseId,
         isFocus: e.isFocus,
         sets: e.sets.map((s) => ({
           weekNumber: s.weekNumber,
-          reps: s.reps,
-          percentage: s.percentage,
+          reps: Math.max(0, parseWholeNumber(s.reps, 0)),
+          percentage: s.weekNumber === null ? null : parsePercentage(s.percentage),
         })),
       })),
     }));
@@ -109,17 +155,51 @@ export default function MesocycleBuilderScreen() {
     Alert.alert('Success', 'Mesocycle structure saved!');
   };
 
-  const addDay = () => {
-    setDays((prev) => [
+  const addWorkout = () => {
+    setWorkouts((prev) => [
       ...prev,
-      { id: Math.random().toString(), name: `Day ${prev.length + 1}`, dayNumber: prev.length + 1, exercises: [] },
+      { id: createDraftId(), name: createWorkoutName(prev.length + 1), exercises: [] },
     ]);
   };
 
-  const addExercise = (dayId: string, ex: Exercise) => {
-    setDays((prev) =>
+  const duplicateWorkout = (workoutId: string) => {
+    setWorkouts((prev) => {
+      const source = prev.find((workout) => workout.id === workoutId);
+      if (!source) return prev;
+      return [
+        ...prev,
+        {
+          id: createDraftId(),
+          name: appendCloneSuffix(source.name),
+          exercises: source.exercises.map(cloneExercise),
+        },
+      ];
+    });
+  };
+
+  const duplicateAllWorkouts = () => {
+    setWorkouts((prev) => [
+      ...prev,
+      ...prev.map((workout) => ({
+        id: createDraftId(),
+        name: appendCloneSuffix(workout.name),
+        exercises: workout.exercises.map(cloneExercise),
+      })),
+    ]);
+  };
+
+  const updateWorkoutName = (workoutId: string, nextName: string) => {
+    setWorkouts((prev) =>
+      prev.map((workout) =>
+        workout.id === workoutId ? { ...workout, name: nextName } : workout,
+      ),
+    );
+  };
+
+  const addExercise = (workoutId: string, ex: Exercise) => {
+    setWorkouts((prev) =>
       prev.map((d) => {
-        if (d.id !== dayId) return d;
+        if (d.id !== workoutId) return d;
         return {
           ...d,
           exercises: [
@@ -127,8 +207,8 @@ export default function MesocycleBuilderScreen() {
             {
               exerciseId: ex.id,
               exerciseName: ex.name,
-              isFocus: false, // Default to accessory
-              sets: [{ weekNumber: null, reps: 10, percentage: null }],
+              isFocus: false,
+              sets: [createAccessorySet()],
             },
           ],
         };
@@ -137,36 +217,29 @@ export default function MesocycleBuilderScreen() {
     setExercisePicker(null);
   };
 
-  const toggleFocus = (dayId: string, exIndex: number) => {
-    setDays((prev) =>
+  const toggleFocus = (workoutId: string, exIndex: number) => {
+    setWorkouts((prev) =>
       prev.map((d) => {
-        if (d.id !== dayId) return d;
+        if (d.id !== workoutId) return d;
         const exercises = [...d.exercises];
         const ex = exercises[exIndex];
         const newIsFocus = !ex.isFocus;
-        
-        // Reset sets based on focus
-        let newSets: MesoSet[] = [];
-        if (newIsFocus) {
-          // One set for every week
-          for (let w = 1; w <= weeks; w++) {
-            newSets.push({ weekNumber: w, reps: 5, percentage: 70 });
-          }
-        } else {
-          // Baseline sets
-          newSets = [{ weekNumber: null, reps: 10, percentage: null }];
-        }
-
+        const newSets = newIsFocus ? createFocusSets(weeks) : [createAccessorySet()];
         exercises[exIndex] = { ...ex, isFocus: newIsFocus, sets: newSets };
         return { ...d, exercises };
       })
     );
   };
 
-  const updateSet = (dayId: string, exIndex: number, setIndex: number, patch: Partial<MesoSet>) => {
-    setDays((prev) =>
+  const updateSet = (
+    workoutId: string,
+    exIndex: number,
+    setIndex: number,
+    patch: Partial<DraftMesoSet>,
+  ) => {
+    setWorkouts((prev) =>
       prev.map((d) => {
-        if (d.id !== dayId) return d;
+        if (d.id !== workoutId) return d;
         const exercises = [...d.exercises];
         const sets = [...exercises[exIndex].sets];
         sets[setIndex] = { ...sets[setIndex], ...patch };
@@ -176,14 +249,14 @@ export default function MesocycleBuilderScreen() {
     );
   };
 
-  const addSetToAccessory = (dayId: string, exIndex: number) => {
-    setDays((prev) =>
+  const addSetToAccessory = (workoutId: string, exIndex: number) => {
+    setWorkouts((prev) =>
       prev.map((d) => {
-        if (d.id !== dayId) return d;
+        if (d.id !== workoutId) return d;
         const exercises = [...d.exercises];
         const sets = [...exercises[exIndex].sets];
         const last = sets[sets.length - 1];
-        sets.push({ weekNumber: null, reps: last?.reps ?? 10, percentage: null });
+        sets.push(createAccessorySet(last?.reps ?? '10'));
         exercises[exIndex] = { ...exercises[exIndex], sets };
         return { ...d, exercises };
       })
@@ -194,7 +267,7 @@ export default function MesocycleBuilderScreen() {
     save();
     // Gather unique focus exercises
     const focusExMap = new Map<string, string>();
-    days.forEach(d => {
+    workouts.forEach(d => {
       d.exercises.forEach(e => {
         if (e.isFocus) focusExMap.set(e.exerciseId, e.exerciseName);
       });
@@ -219,23 +292,63 @@ export default function MesocycleBuilderScreen() {
         <View style={styles.header}>
           <Text style={styles.title}>{name}</Text>
           <Text style={styles.subTitle}>{weeks} Weeks</Text>
+          <Text style={styles.subCopy}>
+            Workouts are ordered sessions, not fixed calendar days. Rest days can go anywhere.
+          </Text>
         </View>
 
-        {days.map((day) => (
-          <View key={day.id} style={styles.daySection}>
+        <View style={styles.headerActions}>
+          <Button variant="ghost" onPress={addWorkout} style={styles.headerActionButton}>
+            Add Workout
+          </Button>
+          {workouts.length > 0 ? (
+            <Button
+              variant="ghost"
+              onPress={duplicateAllWorkouts}
+              style={styles.headerActionButton}>
+              Duplicate All
+            </Button>
+          ) : null}
+        </View>
+
+        {workouts.map((workout, workoutIndex) => (
+          <View key={workout.id} style={styles.daySection}>
+            <View style={styles.workoutHeader}>
+              <View style={styles.workoutHeaderText}>
+                <Text style={styles.workoutIndex}>Workout {workoutIndex + 1}</Text>
+                <TextField
+                  value={workout.name}
+                  onChangeText={(value) => updateWorkoutName(workout.id, value)}
+                  placeholder={createWorkoutName(workoutIndex + 1)}
+                  style={styles.workoutNameInput}
+                />
+              </View>
+              <View style={styles.workoutHeaderActions}>
+                <Pressable onPress={() => duplicateWorkout(workout.id)} hitSlop={8}>
+                  <FontAwesome name="copy" size={16} color={theme.colors.textMuted} />
+                </Pressable>
+                <Pressable
+                  onPress={() =>
+                    setWorkouts((prev) => prev.filter((item) => item.id !== workout.id))
+                  }
+                  hitSlop={8}>
+                  <FontAwesome name="trash" size={18} color={theme.colors.danger} />
+                </Pressable>
+              </View>
+            </View>
+
             <View style={styles.dayHeader}>
-              <Text style={styles.dayTitle}>{day.name}</Text>
-              <Pressable onPress={() => setExercisePicker({ dayId: day.id })}>
+              <Pressable onPress={() => setExercisePicker({ workoutId: workout.id })}>
                 <Text style={styles.addText}>+ Add Exercise</Text>
               </Pressable>
             </View>
 
-            {day.exercises.map((ex, exIdx) => (
+            {workout.exercises.map((ex, exIdx) => (
               <Card key={`${ex.exerciseId}-${exIdx}`} style={styles.exCard}>
                 <View style={styles.exHeader}>
                   <View>
                     <Text style={styles.exName}>{ex.exerciseName}</Text>
-                    <Pressable onPress={() => toggleFocus(day.id, exIdx)} style={styles.focusToggle}>
+                    <Pressable onPress={() => toggleFocus(workout.id, exIdx)} style={styles.focusToggle}>
                       <FontAwesome 
                         name={ex.isFocus ? "star" : "star-o"} 
                         size={14} 
@@ -247,7 +360,7 @@ export default function MesocycleBuilderScreen() {
                     </Pressable>
                   </View>
                   <Pressable onPress={() => {
-                    setDays(prev => prev.map(d => d.id === day.id ? { ...d, exercises: d.exercises.filter((_, i) => i !== exIdx) } : d));
+                    setWorkouts(prev => prev.map(d => d.id === workout.id ? { ...d, exercises: d.exercises.filter((_, i) => i !== exIdx) } : d));
                   }}>
                     <FontAwesome name="trash" size={18} color={theme.colors.danger} />
                   </Pressable>
@@ -261,17 +374,22 @@ export default function MesocycleBuilderScreen() {
                         <View style={styles.weekInputWrapper}>
                           <Text style={styles.inputLabel}>Reps</Text>
                           <TextField
-                            value={String(s.reps)}
-                            onChangeText={(t) => updateSet(day.id, exIdx, si, { reps: parseInt(t, 10) || 0 })}
+                            value={s.reps}
+                            onChangeText={(t) => updateSet(workout.id, exIdx, si, { reps: t })}
                             keyboardType="number-pad"
                           />
                         </View>
                         <View style={styles.weekInputWrapper}>
                           <Text style={styles.inputLabel}>% 1RM</Text>
                           <TextField
-                            value={String(s.percentage)}
-                            onChangeText={(t) => updateSet(day.id, exIdx, si, { percentage: parseFloat(t) || 0 })}
+                            value={s.percentage}
+                            onChangeText={(t) =>
+                              updateSet(workout.id, exIdx, si, {
+                                percentage: normalizeNumericInput(t),
+                              })
+                            }
                             keyboardType="decimal-pad"
+                            placeholder="70"
                           />
                         </View>
                       </View>
@@ -284,13 +402,13 @@ export default function MesocycleBuilderScreen() {
                         <Text style={styles.accLabel}>Set {si + 1}</Text>
                         <TextField
                           style={styles.accInput}
-                          value={String(s.reps)}
-                          onChangeText={(t) => updateSet(day.id, exIdx, si, { reps: parseInt(t, 10) || 0 })}
+                          value={s.reps}
+                          onChangeText={(t) => updateSet(workout.id, exIdx, si, { reps: t })}
                           keyboardType="number-pad"
                         />
                         <Text style={styles.accSuffix}>reps</Text>
                         <Pressable onPress={() => {
-                          setDays(prev => prev.map(d => d.id === day.id ? {
+                          setWorkouts(prev => prev.map(d => d.id === workout.id ? {
                             ...d,
                             exercises: d.exercises.map((e, i) => i === exIdx ? { ...e, sets: e.sets.filter((_, j) => j !== si) } : e)
                           } : d));
@@ -299,7 +417,7 @@ export default function MesocycleBuilderScreen() {
                         </Pressable>
                       </View>
                     ))}
-                    <Pressable onPress={() => addSetToAccessory(day.id, exIdx)}>
+                    <Pressable onPress={() => addSetToAccessory(workout.id, exIdx)}>
                       <Text style={styles.addSetText}>+ Add Set</Text>
                     </Pressable>
                   </View>
@@ -309,8 +427,6 @@ export default function MesocycleBuilderScreen() {
           </View>
         ))}
 
-        <Button variant="ghost" onPress={addDay}>Add Day</Button>
-        
         <View style={styles.footerActions}>
           <Button onPress={save} style={styles.saveBtn}>Save Structure</Button>
           <Button onPress={startBlock}>Start Training Block</Button>
@@ -325,7 +441,7 @@ export default function MesocycleBuilderScreen() {
               data={allExercises}
               keyExtractor={(item) => item.id}
               renderItem={({ item }) => (
-                <Pressable style={styles.pickerRow} onPress={() => exercisePicker && addExercise(exercisePicker.dayId, item)}>
+                <Pressable style={styles.pickerRow} onPress={() => exercisePicker && addExercise(exercisePicker.workoutId, item)}>
                   <Text style={styles.pickerName}>{item.name}</Text>
                 </Pressable>
               )}
@@ -345,9 +461,38 @@ const createStyles = (theme: AppTheme) =>
     header: { marginBottom: 24 },
     title: { fontSize: 24, fontWeight: 'bold', color: theme.colors.textPrimary },
     subTitle: { fontSize: 16, color: theme.colors.textMuted, marginTop: 4 },
+    subCopy: { fontSize: 14, color: theme.colors.textSecondary, marginTop: 12, lineHeight: 20 },
+    headerActions: { flexDirection: 'row', gap: 12, marginBottom: 20 },
+    headerActionButton: { flex: 1 },
     daySection: { marginBottom: 32 },
-    dayHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
-    dayTitle: { fontSize: 20, fontWeight: '700', color: theme.colors.textPrimary },
+    workoutHeader: {
+      flexDirection: 'row',
+      alignItems: 'flex-start',
+      justifyContent: 'space-between',
+      gap: 12,
+      marginBottom: 12,
+    },
+    workoutHeaderText: { flex: 1 },
+    workoutIndex: {
+      fontSize: 12,
+      fontWeight: '700',
+      color: theme.colors.textMuted,
+      textTransform: 'uppercase',
+      letterSpacing: 1,
+      marginBottom: 6,
+    },
+    workoutNameInput: {
+      fontSize: 20,
+      fontWeight: '700',
+      minHeight: 52,
+    },
+    workoutHeaderActions: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 14,
+      paddingTop: 12,
+    },
+    dayHeader: { flexDirection: 'row', justifyContent: 'flex-end', alignItems: 'center', marginBottom: 12 },
     addText: { color: theme.colors.accent, fontWeight: '600' },
     exCard: { padding: 12, marginBottom: 12 },
     exHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 12 },

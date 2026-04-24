@@ -10,6 +10,7 @@ MovingWeight is a local-first strength training tracker for Android. It is built
 - Track sets, reps, and weight during a live session.
 - Review completed workouts in history.
 - Follow multi-week training blocks with mesocycles.
+- Build mesocycles with ordered workouts, duplicate existing workouts, and shape split-based plans faster.
 - Check progress trends for individual exercises.
 - Choose from multiple built-in app themes.
 
