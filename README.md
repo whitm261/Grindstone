@@ -1,6 +1,6 @@
-# MovingWeight
+# Grindstone
 
-MovingWeight is a local-first strength training tracker for Android. It is built for lifters who want to log workouts quickly, reuse workout structures, and review progress without creating an account or sending training data to a server.
+Grindstone is a local-first strength training tracker for Android. It is built for lifters who want to log workouts quickly, reuse workout structures, and review progress without creating an account or sending training data to a server.
 
 ## What You Can Do
 
@@ -33,7 +33,7 @@ bun run android
 
 ## Privacy
 
-MovingWeight stores workout data locally on your device. It does not require an account, and it does not send your training history to an external service.
+Grindstone stores workout data locally on your device. It does not require an account, and it does not send your training history to an external service.
 
 ## Current Highlights
 
@@ -43,7 +43,3 @@ MovingWeight stores workout data locally on your device. It does not require an 
 - Workout history and exercise progress charts
 - Mesocycle planning for longer training blocks
 - Built-in theme selection in Settings
-
-## For Contributors
-
-Project-specific development instructions live in [AGENTS.md](./AGENTS.md).
