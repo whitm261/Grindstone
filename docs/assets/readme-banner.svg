@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1120" height="280" viewBox="0 0 1120 280" role="img" aria-labelledby="title description">
+  <title id="title">MovingWeight</title>
+  <desc id="description">Log lifts. Track progress. All on-device. A teal barbell on a dark background.</desc>
+  <rect width="1120" height="280" rx="24" fill="#111827"/>
+  <rect x="0" y="0" width="8" height="280" rx="4" fill="#2dd4bf"/>
+  <g font-family="Arial, Helvetica, sans-serif">
+    <text x="56" y="86" fill="#2dd4bf" font-size="15" font-weight="700" letter-spacing="3">STRENGTH TRAINING · ANDROID</text>
+    <text x="52" y="152" fill="#f9fafb" font-size="64" font-weight="700">MovingWeight</text>
+    <text x="56" y="203" fill="#cbd5e1" font-size="24">Log lifts. Track progress. All on-device.</text>
+  </g>
+  <circle cx="934" cy="140" r="90" fill="#2dd4bf" fill-opacity="0.08"/>
+  <g fill="#2dd4bf">
+    <rect x="832" y="133" width="204" height="14" rx="7"/>
+    <rect x="860" y="98" width="22" height="84" rx="5"/>
+    <rect x="886" y="82" width="28" height="116" rx="6"/>
+    <rect x="954" y="82" width="28" height="116" rx="6"/>
+    <rect x="986" y="98" width="22" height="84" rx="5"/>
+  </g>
+</svg>

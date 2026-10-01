@@ -371,6 +371,7 @@ Android device/emulator verification is still required; Bun tests do not establi
 - Update `README.md` after significant user-facing changes.
 - Keep `AGENTS.md` aligned with current architecture and hidden project knowledge.
 - `README.md` is user-facing.
+- `docs/android-build.md` contains Android prerequisites, secure signing setup, APK installation, and local development commands.
 - `AGENTS.md` is contributor/agent-facing.
 
 ---

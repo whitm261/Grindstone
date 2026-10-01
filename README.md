@@ -1,64 +1,60 @@
-# Grindstone
+# MovingWeight
 
-Grindstone is a local-first strength training tracker for Android. It is built for lifters who want to log workouts quickly, reuse workout structures, and review progress without creating an account or sending training data to a server.
+![MovingWeight — Log lifts. Track progress. All on-device.](docs/assets/readme-banner.svg)
 
-## What You Can Do
+<p align="center">
+  <strong>Android-first · No account required · Your training stays on your device</strong>
+</p>
 
-- Build your own exercise library with notes and cues.
-- Create workout templates so repeat sessions are fast to start.
-- Run empty workouts when you want to train without a preset plan.
-- Track sets, reps, and weight during a live session.
-- Keep unfinished workout inputs saved locally, including partially typed numbers.
-- Review completed workouts in history.
-- Follow multi-week training blocks with mesocycles.
-- Build mesocycles with ordered workouts, duplicate existing workouts, and shape split-based plans faster.
-- Compare each workout's heaviest completed weight and its reps, including bodyweight sessions.
-- Archive and restore exercises while retaining their history and existing programs.
-- Choose from multiple built-in app themes.
+MovingWeight is a strength training tracker for the work you do in the gym. Start a session, record your sets, and watch your lifts progress over time. Keep it spontaneous or follow a plan across several weeks.
 
-## Why Use It
+## From your first set to your next training block
 
-- **Fast logging**: the workout screen is designed for in-gym use, with large controls and minimal friction.
-- **Flexible planning**: use templates for repeatable sessions or build workouts on the fly.
-- **Private by default**: your training data stays on your device.
-- **No account required**: there is no sign-in, sync setup, or cloud dependency.
+### Log while you lift
 
-## Getting Started
+Start an empty workout or pick a saved template. Record reps and weight, check off the sets you perform, and finish when you're done.
 
-If you want to run the app locally:
+Your unfinished session saves as you edit, so you can leave and pick up where you stopped—even after restarting the app. Bodyweight exercises work too: zero added weight is valid.
+
+### Give your training a plan
+
+Save your regular sessions as **workout templates**, with exercises and default sets ready to go.
+
+For longer programs, build a **multi-week training block** with an ordered sequence of workouts. Set focus lifts as percentages of your training max, add accessory work, and duplicate sessions to build your split faster. Once a block starts, its plan stays stable even if you edit the reusable version.
+
+### See the progress you've earned
+
+Open an exercise to chart your **heaviest completed weight and the reps you lifted**, or switch to volume to review workload. Your workout history keeps the details behind each session.
+
+Keep your library tidy by archiving exercises you no longer use. Their history stays intact, and you can restore them later.
+
+## Make it yours
+
+Build your own exercise library with notes and cues. Choose **Midnight**, **Forest**, or **Ember** in Settings for a dark theme with teal, lime, or orange accents.
+
+## Try it on Android
+
+[**Build and install MovingWeight →**](docs/android-build.md)
+
+The setup guide covers the required tools, secure signing key storage, and installation over USB. Once configured, building and installing are two commands:
 
 ```bash
-bun install
-bun run start
-bun run android
+bun run apk
+bun run apk:install
 ```
 
-## Logging and Reviewing Workouts
+The standalone app runs without Expo Go or a development server. Updates check signing compatibility before installation to help preserve your existing data.
 
-Reps and weight stay editable while you train. Check off the sets you performed; the app validates checked sets when you choose **Finish**. Reps must be positive whole numbers, and weight can be zero for bodyweight or no added weight. Finishing confirms how many unchecked sets will be skipped and removed. A workout with no checked sets requires confirmation too.
+For your first workout:
 
-Workout drafts are saved on your device as you edit, so collapsing an exercise or reopening a session retains unfinished input. You can check sets or add more sets and exercises directly after typing. If local saving fails, the screen offers a retry.
+1. Tap **Start empty workout** on Home.
+2. Add an exercise, enter your reps and weight, and check off the sets you complete.
+3. Tap **Finish**, then find the session in History and your lift's progress on its exercise page.
 
-Exercise progress defaults to **Heaviest weight**, with the selected set's reps and workout details. Tied weights use the set with the most reps. Only checked sets from finished workouts count; repeated exercise blocks are combined. **Volume** remains available as a separate workload measure: the sum of reps × weight.
+## Your workouts, on your device
 
-Archive an exercise from its detail screen or by long-pressing it in the library. Archived exercises leave the usual library and pickers while retaining their history and existing program entries. Open **Archived** to view or restore them.
+MovingWeight stores your training data locally. There is no sign-in or cloud sync, and your training history is not uploaded to a server.
 
-## Running Training Blocks
+---
 
-Starting a mesocycle saves the program for that active block. Editing its reusable definition does not change an already started block. Each workout is tracked by its position in the block and week, so duplicate workout names remain distinct. Starting the same workout again resumes its existing session; finished workouts open their history entry.
-
-Plans used by running or completed training blocks cannot be deleted, preserving those blocks and their workout links. Unused plans can still be deleted.
-
-## Privacy
-
-Grindstone stores workout data locally on your device. It does not require an account, and it does not send your training history to an external service.
-
-## Current Highlights
-
-- Exercise library with custom notes
-- Workout templates with default sets
-- Active workout logging with local drafts and validation on finish
-- Workout history and heaviest-weight progress charts with reps
-- Exercise archival and restoration
-- Mesocycle planning with stable active programs and resumable sessions
-- Built-in theme selection in Settings
+Built with **Expo, React Native, TypeScript, and SQLite**. For local development and verification, see the [developer guide](docs/android-build.md#develop-locally).
