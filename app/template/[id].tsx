@@ -1,4 +1,5 @@
 import FontAwesome from '@expo/vector-icons/FontAwesome';
+import { usePreventRemove } from '@react-navigation/native';
 import { useFocusEffect, useLocalSearchParams, useNavigation, useRouter } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
@@ -24,11 +25,11 @@ import type { Exercise } from '@/db/schema';
 import {
   getTemplateDetail,
   listExercises,
-  replaceTemplateStructure,
-  updateTemplateMeta,
+  saveTemplate,
 } from '@/lib/queries';
+import { parseSetInput, type SetInputErrors } from '@/lib/workoutDraft';
 
-type Block = { exerciseId: string; exerciseName: string; sets: Array<{ reps: number; weight: number }> };
+type Block = { exerciseId: string; exerciseName: string; sets: Array<{ reps: string; weight: string }> };
 
 export default function EditTemplateScreen() {
   const theme = useAppTheme();
@@ -41,9 +42,16 @@ export default function EditTemplateScreen() {
   const [blocks, setBlocks] = useState<Block[]>([]);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [allExercises, setAllExercises] = useState<Exercise[]>([]);
-  const dirty = useRef(false);
+  const [hasChanges, setHasChanges] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const [nameError, setNameError] = useState<string | null>(null);
+  const [setErrors, setSetErrors] = useState<Record<string, SetInputErrors>>({});
+  const loadedId = useRef<string | null>(null);
 
   const load = useCallback(() => {
+    setAllExercises(listExercises());
+    // Returning from Create exercise refreshes the picker without losing edits.
+    if (loadedId.current === id) return;
     const d = getTemplateDetail(id);
     if (!d) {
       router.back();
@@ -56,82 +64,103 @@ export default function EditTemplateScreen() {
         exerciseId: it.exercise.id,
         exerciseName: it.exercise.name,
         sets: it.sets.length
-          ? it.sets.map((s) => ({ reps: s.targetReps, weight: s.targetWeight }))
-          : [{ reps: 8, weight: 0 }],
+          ? it.sets.map((s) => ({ reps: String(s.targetReps), weight: String(s.targetWeight) }))
+          : [{ reps: '8', weight: '0' }],
       })),
     );
-    setAllExercises(listExercises());
-    dirty.current = false;
-  }, [id]);
+    loadedId.current = id;
+    setHasChanges(false);
+    setSaved(false);
+    setNameError(null);
+    setSetErrors({});
+  }, [id, router]);
 
   useFocusEffect(load);
 
-  useEffect(() => {
-    const unsubscribe = navigation.addListener('beforeRemove', (e) => {
-      if (!dirty.current) return;
-      e.preventDefault();
-      Alert.alert(
-        'Discard changes?',
-        'You have unsaved changes to this template.',
-        [
-          { text: "Don't leave", style: 'cancel' },
-          {
-            text: 'Discard',
-            style: 'destructive',
-            onPress: () => navigation.dispatch(e.data.action),
-          },
-        ],
-      );
-    });
-    return unsubscribe;
-  }, [navigation]);
+  usePreventRemove(hasChanges, ({ data }) => {
+    Alert.alert('Discard changes?', 'You have unsaved changes to this template.', [
+      { text: "Don't leave", style: 'cancel' },
+      {
+        text: 'Discard',
+        style: 'destructive',
+        onPress: () => {
+          setHasChanges(false);
+          navigation.dispatch(data.action);
+        },
+      },
+    ]);
+  });
 
-  const persistMeta = () => {
-    updateTemplateMeta(id, name, notes);
+  // Let the navigation guard observe a successful save before leaving.
+  useEffect(() => {
+    if (saved && !hasChanges) router.back();
+  }, [saved, hasChanges, router]);
+
+  const markChanged = () => {
+    setHasChanges(true);
+    setNameError(null);
+    setSetErrors({});
   };
 
   const saveStructure = () => {
-    persistMeta();
-    const structure = blocks.map((b) => ({
-      exerciseId: b.exerciseId,
-      sets: b.sets.map((s) => ({
-        reps: Math.max(0, Math.round(s.reps)),
-        weight: Number(s.weight) || 0,
-      })),
+    const errors: Record<string, SetInputErrors> = {};
+    let firstError = '';
+    const structure = blocks.map((block, bi) => ({
+      exerciseId: block.exerciseId,
+      sets: block.sets.map((set, si) => {
+        const parsed = parseSetInput(set);
+        if (!parsed.valid) {
+          errors[`${bi}:${si}`] = parsed.errors;
+          firstError ||= `${block.exerciseName}, set ${si + 1}: ${Object.values(parsed.errors).join(' ')}`;
+        }
+        return { reps: parsed.reps, weight: parsed.weight };
+      }),
     }));
-    replaceTemplateStructure(id, structure);
-    dirty.current = false;
+    const invalidName = !name.trim();
+    setNameError(invalidName ? 'Enter a template name.' : null);
+    setSetErrors(errors);
+    if (invalidName || firstError) {
+      Alert.alert('Check template', invalidName ? 'Enter a template name.' : firstError);
+      return;
+    }
+    try {
+      saveTemplate(id, name, notes, structure);
+      setHasChanges(false);
+      setSaved(true);
+    } catch (error) {
+      Alert.alert('Could not save template', error instanceof Error ? error.message : 'Your edits are still here. Please try again.');
+    }
   };
 
   const addExercise = (ex: Exercise) => {
-    dirty.current = true;
+    markChanged();
     setBlocks((prev) => [
       ...prev,
-      { exerciseId: ex.id, exerciseName: ex.name, sets: [{ reps: 8, weight: 0 }] },
+      { exerciseId: ex.id, exerciseName: ex.name, sets: [{ reps: '8', weight: '0' }] },
     ]);
     setPickerOpen(false);
   };
 
   const removeBlock = (index: number) => {
-    dirty.current = true;
+    markChanged();
     setBlocks((prev) => prev.filter((_, i) => i !== index));
   };
 
   const addSet = (blockIndex: number) => {
-    dirty.current = true;
+    markChanged();
     setBlocks((prev) => {
       const next = [...prev];
       const last = next[blockIndex].sets[next[blockIndex].sets.length - 1];
       next[blockIndex] = {
         ...next[blockIndex],
-        sets: [...next[blockIndex].sets, { reps: last?.reps ?? 8, weight: last?.weight ?? 0 }],
+        sets: [...next[blockIndex].sets, { reps: last?.reps ?? '8', weight: last?.weight ?? '0' }],
       };
       return next;
     });
   };
 
   const removeSet = (blockIndex: number, setIndex: number) => {
-    dirty.current = true;
+    markChanged();
     setBlocks((prev) => {
       const next = [...prev];
       if (next[blockIndex].sets.length <= 1) return prev;
@@ -146,9 +175,9 @@ export default function EditTemplateScreen() {
   const updateSet = (
     blockIndex: number,
     setIndex: number,
-    patch: Partial<{ reps: number; weight: number }>,
+    patch: Partial<{ reps: string; weight: string }>,
   ) => {
-    dirty.current = true;
+    markChanged();
     setBlocks((prev) => {
       const next = [...prev];
       const sets = [...next[blockIndex].sets];
@@ -164,9 +193,10 @@ export default function EditTemplateScreen() {
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
       <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
         <Text style={styles.label}>Name</Text>
-        <TextField value={name} onChangeText={setName} onBlur={persistMeta} />
+        <TextField value={name} onChangeText={(text) => { markChanged(); setName(text); }} />
+        {nameError && <Text style={styles.error}>{nameError}</Text>}
         <Text style={[styles.label, styles.mt]}>Notes</Text>
-        <TextField value={notes} onChangeText={setNotes} multiline onBlur={persistMeta} />
+        <TextField value={notes} onChangeText={(text) => { markChanged(); setNotes(text); }} multiline />
 
         <View style={styles.rowBetween}>
           <Text style={[styles.label, styles.mt]}>Exercises</Text>
@@ -184,37 +214,40 @@ export default function EditTemplateScreen() {
           <Card key={`${block.exerciseId}-${bi}`} style={styles.block}>
             <View style={styles.blockHeader}>
               <Text style={styles.blockTitle}>{block.exerciseName}</Text>
-              <Pressable onPress={() => removeBlock(bi)} hitSlop={8}>
+              <Pressable onPress={() => removeBlock(bi)} style={styles.iconButton} accessibilityRole="button" accessibilityLabel={`Remove ${block.exerciseName}`}>
                 <FontAwesome name="times" size={18} color={theme.colors.danger} />
               </Pressable>
             </View>
             {block.sets.map((s, si) => (
-              <View key={si} style={styles.setRow}>
-                <Text style={styles.setIdx}>Set {si + 1}</Text>
-                <TextField
-                  style={styles.setInput}
-                  keyboardType="number-pad"
-                  value={String(s.reps)}
-                  onChangeText={(t) =>
-                    updateSet(bi, si, { reps: parseInt(t, 10) || 0 })
-                  }
-                />
-                <Text style={styles.x}>×</Text>
-                <TextField
-                  style={styles.setInput}
-                  keyboardType="decimal-pad"
-                  value={String(s.weight)}
-                  onChangeText={(t) =>
-                    updateSet(bi, si, { weight: parseFloat(t) || 0 })
-                  }
-                />
-                <Pressable onPress={() => removeSet(bi, si)} disabled={block.sets.length <= 1}>
-                  <FontAwesome
-                    name="minus-circle"
-                    size={22}
-                    color={block.sets.length <= 1 ? theme.colors.border : theme.colors.textMuted}
+              <View key={si}>
+                <View style={styles.setRow}>
+                  <Text style={styles.setIdx}>Set {si + 1}</Text>
+                  <TextField
+                    style={styles.setInput}
+                    keyboardType="number-pad"
+                    value={s.reps}
+                    accessibilityLabel={`${block.exerciseName}, set ${si + 1} reps`}
+                    onChangeText={(reps) => updateSet(bi, si, { reps })}
                   />
-                </Pressable>
+                  <Text style={styles.x}>×</Text>
+                  <TextField
+                    style={styles.setInput}
+                    keyboardType="decimal-pad"
+                    value={s.weight}
+                    accessibilityLabel={`${block.exerciseName}, set ${si + 1} weight`}
+                    onChangeText={(weight) => updateSet(bi, si, { weight })}
+                  />
+                  <Pressable onPress={() => removeSet(bi, si)} disabled={block.sets.length <= 1} style={styles.iconButton} accessibilityRole="button" accessibilityLabel={`Remove set ${si + 1}`}>
+                    <FontAwesome
+                      name="minus-circle"
+                      size={22}
+                      color={block.sets.length <= 1 ? theme.colors.border : theme.colors.textMuted}
+                    />
+                  </Pressable>
+                </View>
+                {setErrors[`${bi}:${si}`] && (
+                  <Text style={styles.error}>{`${block.exerciseName}, set ${si + 1}: ${Object.values(setErrors[`${bi}:${si}`]).join(' ')}`}</Text>
+                )}
               </View>
             ))}
             <Pressable style={styles.addSet} onPress={() => addSet(bi)}>
@@ -224,17 +257,13 @@ export default function EditTemplateScreen() {
         ))}
 
         <View style={styles.actions}>
-          <Button
-            onPress={() => {
-              saveStructure();
-              router.back();
-            }}>
+          <Button onPress={saveStructure}>
             Save template
           </Button>
         </View>
       </ScrollView>
 
-      <Modal visible={pickerOpen} animationType="slide" transparent>
+      <Modal visible={pickerOpen} animationType="slide" transparent onRequestClose={() => setPickerOpen(false)}>
         <View style={styles.modalBackdrop}>
           <Card style={styles.modalCard}>
             <Text style={styles.modalTitle}>Choose exercise</Text>
@@ -242,6 +271,7 @@ export default function EditTemplateScreen() {
               data={allExercises}
               keyExtractor={(item) => item.id}
               style={styles.modalList}
+              keyboardShouldPersistTaps="handled"
               renderItem={({ item }) => (
                 <Pressable style={styles.pickerRow} onPress={() => addExercise(item)}>
                   <Text style={styles.pickerName}>{item.name}</Text>
@@ -291,12 +321,14 @@ const createStyles = (theme: AppTheme) =>
       alignItems: 'center',
       marginTop: theme.space.md,
     },
-    addLink: { flexDirection: 'row', alignItems: 'center' },
+    addLink: { flexDirection: 'row', alignItems: 'center', minHeight: 48, paddingHorizontal: theme.space.sm },
     addLinkText: { color: theme.colors.accent, fontWeight: '700', fontSize: theme.fontSize.body },
     hint: { color: theme.colors.textSecondary, marginVertical: theme.space.md, lineHeight: 22 },
+    error: { color: theme.colors.danger, marginTop: theme.space.sm, lineHeight: 22 },
     block: { marginBottom: theme.space.md },
     blockHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-    blockTitle: { fontSize: theme.fontSize.title, fontWeight: '700', color: theme.colors.textPrimary },
+    blockTitle: { flex: 1, fontSize: theme.fontSize.title, fontWeight: '700', color: theme.colors.textPrimary },
+    iconButton: { minWidth: 48, minHeight: 48, alignItems: 'center', justifyContent: 'center' },
     setRow: {
       flexDirection: 'row',
       alignItems: 'center',
@@ -306,7 +338,7 @@ const createStyles = (theme: AppTheme) =>
     setIdx: { width: 44, color: theme.colors.textSecondary, fontSize: theme.fontSize.caption },
     setInput: { flex: 1, minHeight: 44, paddingVertical: 8 },
     x: { color: theme.colors.textMuted },
-    addSet: { marginTop: theme.space.sm },
+    addSet: { marginTop: theme.space.sm, minHeight: 48, justifyContent: 'center' },
     addSetText: { color: theme.colors.accent, fontWeight: '600' },
     actions: { marginTop: theme.space.lg },
     modalBackdrop: {

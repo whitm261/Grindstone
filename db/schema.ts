@@ -1,10 +1,11 @@
-import { integer, real, sqliteTable, text } from 'drizzle-orm/sqlite-core';
+import { integer, real, sqliteTable, text, uniqueIndex } from 'drizzle-orm/sqlite-core';
 
 export const exercises = sqliteTable('exercises', {
   id: text('id').primaryKey(),
   name: text('name').notNull(),
   notes: text('notes').notNull().default(''),
   createdAt: text('created_at').notNull(),
+  archivedAt: text('archived_at'),
 });
 
 export const workoutTemplates = sqliteTable('workout_templates', {
@@ -44,9 +45,23 @@ export const workouts = sqliteTable('workouts', {
     onDelete: 'set null',
   }),
   mesocycleWeek: integer('mesocycle_week'),
+  mesocycleSlotId: text('mesocycle_slot_id'),
   name: text('name').notNull(),
   startedAt: text('started_at').notNull(),
   completedAt: text('completed_at'),
+}, (table) => [
+  uniqueIndex('workouts_mesocycle_slot_week_unique').on(
+    table.activeMesocycleId,
+    table.mesocycleSlotId,
+    table.mesocycleWeek
+  ),
+]);
+
+export const workoutDrafts = sqliteTable('workout_drafts', {
+  workoutId: text('workout_id')
+    .primaryKey()
+    .references(() => workouts.id, { onDelete: 'cascade' }),
+  payload: text('payload').notNull(),
 });
 
 export const workoutExercises = sqliteTable('workout_exercises', {
@@ -119,6 +134,7 @@ export const activeMesocycles = sqliteTable('active_mesocycles', {
   name: text('name').notNull(),
   startedAt: text('started_at').notNull(),
   completedAt: text('completed_at'),
+  structureSnapshot: text('structure_snapshot'),
 });
 
 export const activeMesocycleMaxes = sqliteTable('active_mesocycle_maxes', {

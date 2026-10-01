@@ -11,9 +11,19 @@ let _db: ReturnType<typeof drizzle<typeof schema>> | null = null;
 
 export function getSQLite(): SQLiteDatabase {
   if (!_sqlite) {
-    _sqlite = openDatabaseSync(DB_NAME);
-    _sqlite.execSync('PRAGMA foreign_keys = ON;');
-    initDatabase(_sqlite);
+    const candidate = openDatabaseSync(DB_NAME);
+    try {
+      initDatabase(candidate);
+      _sqlite = candidate;
+    } catch (error) {
+      // A failed migration must never leave a cached, partially initialized handle.
+      try {
+        candidate.closeSync();
+      } catch {
+        // Preserve the initialization error even if closing the failed handle fails.
+      }
+      throw error;
+    }
   }
   return _sqlite;
 }

@@ -70,10 +70,11 @@ describe('exercises', () => {
     expect(updated?.notes).toBe('flat barbell');
   });
 
-  test('deleteExercise removes the row', () => {
+  test('deleteExercise archives the row without removing its history identity', () => {
     const ex = createExercise('Curl');
     deleteExercise(ex.id);
-    expect(getExercise(ex.id)).toBeUndefined();
+    expect(getExercise(ex.id)?.archivedAt).not.toBeNull();
+    expect(listExercises()).toHaveLength(0);
   });
 });
 

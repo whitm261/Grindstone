@@ -1,11 +1,17 @@
-import type { SQLiteDatabase } from 'expo-sqlite';
+/** The synchronous SQLite operations shared by Expo and the Bun migration tests. */
+export type MigrationDatabase = {
+  execSync: (sql: string) => void;
+  getFirstSync: <T>(sql: string) => T | null;
+  withTransactionSync: (task: () => void) => void;
+  runSync: (sql: string, params: (string | number | null)[]) => unknown;
+};
 
 type Migration = {
   version: number;
-  up: (db: SQLiteDatabase) => void;
+  up: (db: MigrationDatabase) => void;
 };
 
-const migrations: Migration[] = [
+export const migrations: readonly Migration[] = [
   {
     version: 1,
     up: (db) => {
@@ -115,27 +121,48 @@ const migrations: Migration[] = [
       `);
     },
   },
+  {
+    version: 3,
+    up: (db) => {
+      db.execSync(`
+        ALTER TABLE exercises ADD COLUMN archived_at TEXT;
+        ALTER TABLE active_mesocycles ADD COLUMN structure_snapshot TEXT;
+        ALTER TABLE workouts ADD COLUMN mesocycle_slot_id TEXT;
+
+        CREATE UNIQUE INDEX workouts_mesocycle_slot_week_unique
+          ON workouts (active_mesocycle_id, mesocycle_slot_id, mesocycle_week);
+
+        CREATE TABLE workout_drafts (
+          workout_id TEXT PRIMARY KEY NOT NULL REFERENCES workouts(id) ON DELETE CASCADE,
+          payload TEXT NOT NULL
+        );
+      `);
+    },
+  },
 ];
 
-const SCHEMA_VERSION = migrations.length;
+export const SCHEMA_VERSION = migrations[migrations.length - 1].version;
 
-export function initDatabase(db: SQLiteDatabase): void {
-  db.execSync('PRAGMA journal_mode = WAL');
-  db.execSync('PRAGMA foreign_keys = ON');
-
+export function initDatabase(db: MigrationDatabase, options: { seed?: boolean } = {}): void {
   const row = db.getFirstSync<{ user_version: number }>('PRAGMA user_version');
   const currentVersion = row?.user_version ?? 0;
+  if (currentVersion > SCHEMA_VERSION) {
+    throw new Error(`Database version ${currentVersion} is newer than supported version ${SCHEMA_VERSION}. Update the app to open it.`);
+  }
+
+  db.execSync('PRAGMA journal_mode = WAL');
+  db.execSync('PRAGMA foreign_keys = ON');
 
   for (const migration of migrations) {
     if (migration.version > currentVersion) {
       db.withTransactionSync(() => {
         migration.up(db);
+        db.execSync(`PRAGMA user_version = ${migration.version}`);
       });
     }
   }
 
-  db.execSync(`PRAGMA user_version = ${SCHEMA_VERSION}`);
-
+  if (options.seed === false) return;
   // Pre-populate common exercises if the table is empty
   const exCount = db.getFirstSync<{ c: number }>('SELECT count(*) as c FROM exercises');
   if (exCount && exCount.c === 0) {

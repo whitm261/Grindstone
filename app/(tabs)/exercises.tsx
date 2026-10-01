@@ -11,7 +11,7 @@ import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import type { AppTheme } from '@/constants/theme';
 import type { Exercise } from '@/db/schema';
-import { deleteExercise, listExercises } from '@/lib/queries';
+import { archiveExercise, listExercises, restoreExercise } from '@/lib/queries';
 
 export default function ExercisesScreen() {
   const theme = useAppTheme();
@@ -19,21 +19,24 @@ export default function ExercisesScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const [data, setData] = useState<Exercise[]>([]);
+  const [showArchived, setShowArchived] = useState(false);
 
   const refresh = useCallback(() => {
-    setData(listExercises());
-  }, []);
+    setData(listExercises({ archived: showArchived }));
+  }, [showArchived]);
 
   useFocusEffect(refresh);
 
-  const confirmDelete = (item: Exercise) => {
-    Alert.alert('Delete Exercise', `Are you sure you want to delete "${item.name}"?`, [
+  const confirmArchive = (item: Exercise) => {
+    Alert.alert(item.archivedAt ? 'Restore Exercise' : 'Archive Exercise', item.archivedAt
+      ? `Restore "${item.name}" to your exercise library?`
+      : `Archive "${item.name}"? Its history and existing workouts and programs will be preserved.`, [
       { text: 'Cancel', style: 'cancel' },
       {
-        text: 'Delete',
-        style: 'destructive',
+        text: item.archivedAt ? 'Restore' : 'Archive',
         onPress: () => {
-          deleteExercise(item.id);
+          if (item.archivedAt) restoreExercise(item.id);
+          else archiveExercise(item.id);
           refresh();
         },
       },
@@ -44,12 +47,24 @@ export default function ExercisesScreen() {
 
   return (
     <View style={[styles.screen, { paddingBottom: insets.bottom }]}>
+      <View style={styles.filterRow}>
+        <View style={styles.filterButton}>
+          <Button variant={showArchived ? 'ghost' : 'primary'} onPress={() => setShowArchived(false)}>
+            Library
+          </Button>
+        </View>
+        <View style={styles.filterButton}>
+          <Button variant={showArchived ? 'primary' : 'ghost'} onPress={() => setShowArchived(true)}>
+            Archived
+          </Button>
+        </View>
+      </View>
       {data.length === 0 ? (
         <View style={styles.emptyState}>
-          <Text style={styles.empty}>No exercises yet. Add your first movement.</Text>
-          <Button style={styles.emptyCta} onPress={() => router.push('/exercise/new')}>
+          <Text style={styles.empty}>{showArchived ? 'No archived exercises.' : 'No exercises yet. Add your first movement.'}</Text>
+          {!showArchived && <Button style={styles.emptyCta} onPress={() => router.push('/exercise/new')}>
             Add exercise
-          </Button>
+          </Button>}
         </View>
       ) : (
         <FlatList
@@ -63,7 +78,7 @@ export default function ExercisesScreen() {
               animate={{ opacity: 1, translateY: 0 }}
               transition={{ type: 'timing', duration: 240, delay: Math.min(index * 40, 500) }}>
               <Link href={`/exercise/${item.id}`} asChild>
-                <Pressable onLongPress={() => confirmDelete(item)}>
+                <Pressable onLongPress={() => confirmArchive(item)}>
                   <Card style={styles.row}>
                     <View style={styles.rowInner}>
                       <View style={styles.iconWrap}>
@@ -101,6 +116,8 @@ export default function ExercisesScreen() {
 const createStyles = (theme: AppTheme) =>
   StyleSheet.create({
     screen: { flex: 1, backgroundColor: theme.colors.background },
+    filterRow: { flexDirection: 'row', padding: theme.space.md, paddingBottom: 0, gap: theme.space.sm },
+    filterButton: { flex: 1 },
     listFlex: { flex: 1 },
     list: { padding: theme.space.md, paddingBottom: 120, gap: theme.space.sm },
     emptyState: {

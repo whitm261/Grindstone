@@ -8,10 +8,12 @@ Grindstone is a local-first strength training tracker for Android. It is built f
 - Create workout templates so repeat sessions are fast to start.
 - Run empty workouts when you want to train without a preset plan.
 - Track sets, reps, and weight during a live session.
+- Keep unfinished workout inputs saved locally, including partially typed numbers.
 - Review completed workouts in history.
 - Follow multi-week training blocks with mesocycles.
 - Build mesocycles with ordered workouts, duplicate existing workouts, and shape split-based plans faster.
-- Check progress trends for individual exercises.
+- Compare each workout's heaviest completed weight and its reps, including bodyweight sessions.
+- Archive and restore exercises while retaining their history and existing programs.
 - Choose from multiple built-in app themes.
 
 ## Why Use It
@@ -31,6 +33,22 @@ bun run start
 bun run android
 ```
 
+## Logging and Reviewing Workouts
+
+Reps and weight stay editable while you train. Check off the sets you performed; the app validates checked sets when you choose **Finish**. Reps must be positive whole numbers, and weight can be zero for bodyweight or no added weight. Finishing confirms how many unchecked sets will be skipped and removed. A workout with no checked sets requires confirmation too.
+
+Workout drafts are saved on your device as you edit, so collapsing an exercise or reopening a session retains unfinished input. You can check sets or add more sets and exercises directly after typing. If local saving fails, the screen offers a retry.
+
+Exercise progress defaults to **Heaviest weight**, with the selected set's reps and workout details. Tied weights use the set with the most reps. Only checked sets from finished workouts count; repeated exercise blocks are combined. **Volume** remains available as a separate workload measure: the sum of reps × weight.
+
+Archive an exercise from its detail screen or by long-pressing it in the library. Archived exercises leave the usual library and pickers while retaining their history and existing program entries. Open **Archived** to view or restore them.
+
+## Running Training Blocks
+
+Starting a mesocycle saves the program for that active block. Editing its reusable definition does not change an already started block. Each workout is tracked by its position in the block and week, so duplicate workout names remain distinct. Starting the same workout again resumes its existing session; finished workouts open their history entry.
+
+Plans used by running or completed training blocks cannot be deleted, preserving those blocks and their workout links. Unused plans can still be deleted.
+
 ## Privacy
 
 Grindstone stores workout data locally on your device. It does not require an account, and it does not send your training history to an external service.
@@ -39,7 +57,8 @@ Grindstone stores workout data locally on your device. It does not require an ac
 
 - Exercise library with custom notes
 - Workout templates with default sets
-- Active workout logging with set completion tracking
-- Workout history and exercise progress charts
-- Mesocycle planning for longer training blocks
+- Active workout logging with local drafts and validation on finish
+- Workout history and heaviest-weight progress charts with reps
+- Exercise archival and restoration
+- Mesocycle planning with stable active programs and resumable sessions
 - Built-in theme selection in Settings

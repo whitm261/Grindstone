@@ -26,7 +26,7 @@ export default function NewMesocycleScreen() {
   };
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
+    <ScrollView style={styles.container} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
       <Stack.Screen options={{ title: 'New Mesocycle' }} />
       <Card style={styles.card}>
         <Text style={styles.label}>Mesocycle Name</Text>

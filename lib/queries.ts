@@ -15,15 +15,18 @@ import {
   templateSets,
   workoutExercises,
   workoutTemplates,
+  workoutDrafts,
   workouts,
 } from '@/db/schema';
+import { createWorkoutDraft, isWorkoutDraft, validateWorkoutDraft, type WorkoutDraft } from '@/lib/workoutDraft';
 
 const nowIso = () => new Date().toISOString();
 
-export function listExercises() {
+export function listExercises(options: { archived?: boolean } = {}) {
   return getDb()
     .select()
     .from(exercises)
+    .where(options.archived ? isNotNull(exercises.archivedAt) : isNull(exercises.archivedAt))
     .orderBy(asc(exercises.name))
     .all();
 }
@@ -34,7 +37,7 @@ export function getExercise(id: string) {
 
 export function createExercise(name: string, notes = '') {
   const id = nanoid();
-  const row = { id, name: name.trim(), notes: notes.trim(), createdAt: nowIso() };
+  const row = { id, name: name.trim(), notes: notes.trim(), createdAt: nowIso(), archivedAt: null };
   getDb().insert(exercises).values(row).run();
   return row;
 }
@@ -47,8 +50,21 @@ export function updateExercise(id: string, name: string, notes = '') {
     .run();
 }
 
+export function archiveExercise(id: string) {
+  getDb()
+    .update(exercises)
+    .set({ archivedAt: nowIso() })
+    .where(and(eq(exercises.id, id), isNull(exercises.archivedAt)))
+    .run();
+}
+
+export function restoreExercise(id: string) {
+  getDb().update(exercises).set({ archivedAt: null }).where(eq(exercises.id, id)).run();
+}
+
+/** Compatibility for callers predating archival; historical references must survive. */
 export function deleteExercise(id: string) {
-  getDb().delete(exercises).where(eq(exercises.id, id)).run();
+  archiveExercise(id);
 }
 
 export function listTemplates() {
@@ -136,8 +152,13 @@ export function updateTemplateMeta(id: string, name: string, notes = '') {
 export function replaceTemplateStructure(
   templateId: string,
   structure: Array<{ exerciseId: string; sets: Array<{ reps: number; weight: number }> }>,
+  metadata?: { name: string; notes: string },
 ) {
   getDb().transaction((tx) => {
+    if (metadata) {
+      tx.update(workoutTemplates).set({ name: metadata.name.trim(), notes: metadata.notes.trim() })
+        .where(eq(workoutTemplates.id, templateId)).run();
+    }
     const existingTe = tx
       .select({ id: templateExercises.id })
       .from(templateExercises)
@@ -177,6 +198,24 @@ export function replaceTemplateStructure(
 
 export function deleteTemplate(id: string) {
   getDb().delete(workoutTemplates).where(eq(workoutTemplates.id, id)).run();
+}
+
+/** Save metadata and structure together so a failed edit leaves the previous template intact. */
+export function saveTemplate(
+  id: string,
+  name: string,
+  notes: string,
+  structure: Parameters<typeof replaceTemplateStructure>[1],
+) {
+  if (!name.trim()) throw new Error('Enter a template name.');
+  for (const block of structure) {
+    for (const set of block.sets) {
+      if (!Number.isSafeInteger(set.reps) || set.reps <= 0 || !Number.isFinite(set.weight) || set.weight < 0) {
+        throw new Error('Enter positive whole reps and a weight of 0 or more for every set.');
+      }
+    }
+  }
+  return replaceTemplateStructure(id, structure, { name, notes });
 }
 
 export function createEmptyWorkout(name?: string) {
@@ -242,11 +281,21 @@ export function startWorkoutFromTemplate(templateId: string) {
 
 export function getActiveWorkouts() {
   return getDb()
-    .select()
+    .select({ workout: workouts, payload: workoutDrafts.payload })
     .from(workouts)
+    .leftJoin(workoutDrafts, eq(workoutDrafts.workoutId, workouts.id))
     .where(isNull(workouts.completedAt))
     .orderBy(desc(workouts.startedAt))
-    .all();
+    .all()
+    .map(({ workout, payload }) => {
+      if (!payload) return workout;
+      try {
+        const draft: unknown = JSON.parse(payload);
+        return isWorkoutDraft(draft) ? { ...workout, name: draft.name.trim() || 'Workout' } : workout;
+      } catch {
+        return workout;
+      }
+    });
 }
 
 export function listWorkoutHistory(limit = 100) {
@@ -327,30 +376,63 @@ export function updateSetLog(
   getDb().update(setLogs).set(patch).where(eq(setLogs.id, setId)).run();
 }
 
+export function getWorkoutDraft(workoutId: string): WorkoutDraft | null {
+  const row = getDb().select().from(workoutDrafts).where(eq(workoutDrafts.workoutId, workoutId)).get();
+  if (!row) return null;
+  const value: unknown = JSON.parse(row.payload);
+  if (!isWorkoutDraft(value)) throw new Error('This workout draft could not be read. Your saved data has been kept.');
+  return value;
+}
+
+/** Save raw text locally; numeric validation belongs to completeWorkout. */
+export function saveWorkoutDraft(workoutId: string, draft: WorkoutDraft) {
+  const db = getDb();
+  db.transaction((tx) => {
+    const workout = tx.select().from(workouts).where(eq(workouts.id, workoutId)).get();
+    if (!workout || workout.completedAt) throw new Error('This workout is no longer active.');
+    tx.insert(workoutDrafts).values({ workoutId, payload: JSON.stringify(draft) })
+      .onConflictDoUpdate({ target: workoutDrafts.workoutId, set: { payload: JSON.stringify(draft) } }).run();
+  });
+}
+
 export function addSetToWorkoutExercise(workoutExerciseId: string) {
-  const existing = getDb()
-    .select()
-    .from(setLogs)
-    .where(eq(setLogs.workoutExerciseId, workoutExerciseId))
-    .orderBy(desc(setLogs.index))
-    .all();
-  const last = existing[0];
-  const nextIndex = last ? last.index + 1 : 0;
-  const reps = last?.reps ?? 8;
-  const weight = last?.weight ?? 0;
-  const id = nanoid();
-  getDb()
-    .insert(setLogs)
-    .values({
-      id,
-      workoutExerciseId,
-      index: nextIndex,
-      reps,
-      weight,
-      completed: false,
-    })
-    .run();
-  return id;
+  const db = getDb();
+  return db.transaction((tx) => {
+    const block = tx.select().from(workoutExercises).where(eq(workoutExercises.id, workoutExerciseId)).get();
+    if (!block) throw new Error('Exercise is no longer in this workout.');
+    const existing = tx
+      .select()
+      .from(setLogs)
+      .where(eq(setLogs.workoutExerciseId, workoutExerciseId))
+      .orderBy(desc(setLogs.index))
+      .all();
+    const last = existing[0];
+    const nextIndex = last ? last.index + 1 : 0;
+    const reps = last?.reps ?? 8;
+    const weight = last?.weight ?? 0;
+    const id = nanoid();
+    tx
+      .insert(setLogs)
+      .values({
+        id,
+        workoutExerciseId,
+        index: nextIndex,
+        reps,
+        weight,
+        completed: false,
+      })
+      .run();
+    const draftRow = tx.select().from(workoutDrafts).where(eq(workoutDrafts.workoutId, block.workoutId)).get();
+    if (draftRow) {
+      const draft: unknown = JSON.parse(draftRow.payload);
+      if (!isWorkoutDraft(draft)) throw new Error('This workout draft could not be read.');
+      const source = last && draft.sets[last.id];
+      draft.sets[id] = { reps: source?.reps ?? String(reps), weight: source?.weight ?? String(weight), completed: false };
+      tx.update(workoutDrafts).set({ payload: JSON.stringify(draft) })
+        .where(eq(workoutDrafts.workoutId, block.workoutId)).run();
+    }
+    return id;
+  }, { behavior: 'immediate' });
 }
 
 export function removeLastSet(workoutExerciseId: string) {
@@ -367,34 +449,36 @@ export function removeLastSet(workoutExerciseId: string) {
 }
 
 export function addExerciseToWorkout(workoutId: string, exerciseId: string) {
-  const agg = getDb()
-    .select({ m: max(workoutExercises.sortOrder) })
-    .from(workoutExercises)
-    .where(eq(workoutExercises.workoutId, workoutId))
-    .get();
-  const maxSort = agg?.m ?? -1;
-  const weId = nanoid();
-  getDb()
-    .insert(workoutExercises)
-    .values({
-      id: weId,
-      workoutId,
-      exerciseId,
-      sortOrder: maxSort + 1,
-    })
-    .run();
-  getDb()
-    .insert(setLogs)
-    .values({
-      id: nanoid(),
-      workoutExerciseId: weId,
-      index: 0,
-      reps: 8,
-      weight: 0,
-      completed: false,
-    })
-    .run();
-  return weId;
+  return getDb().transaction((tx) => {
+    const agg = tx
+      .select({ m: max(workoutExercises.sortOrder) })
+      .from(workoutExercises)
+      .where(eq(workoutExercises.workoutId, workoutId))
+      .get();
+    const maxSort = agg?.m ?? -1;
+    const weId = nanoid();
+    tx
+      .insert(workoutExercises)
+      .values({
+        id: weId,
+        workoutId,
+        exerciseId,
+        sortOrder: maxSort + 1,
+      })
+      .run();
+    tx
+      .insert(setLogs)
+      .values({
+        id: nanoid(),
+        workoutExerciseId: weId,
+        index: 0,
+        reps: 8,
+        weight: 0,
+        completed: false,
+      })
+      .run();
+    return weId;
+  }, { behavior: 'immediate' });
 }
 
 export function removeWorkoutExerciseBlock(workoutExerciseId: string) {
@@ -431,217 +515,167 @@ export function moveWorkoutExercise(workoutExerciseId: string, direction: -1 | 1
   }, { behavior: 'immediate' });
 }
 
-export function completeWorkout(workoutId: string) {
-  getDb()
-    .update(workouts)
-    .set({ completedAt: nowIso() })
-    .where(eq(workouts.id, workoutId))
-    .run();
+export function completeWorkout(workoutId: string, draft?: WorkoutDraft) {
+  return getDb().transaction((tx) => {
+    const detail = getWorkoutDetail(workoutId);
+    if (!detail) throw new Error('Workout not found.');
+    if (detail.workout.completedAt) return;
+    const current = createWorkoutDraft(detail, draft ?? getWorkoutDraft(workoutId));
+    const validation = validateWorkoutDraft(current);
+    if (!validation.valid) throw new Error('Correct the reps and weight in checked sets before finishing.');
+    for (const block of detail.blocks) {
+      for (const set of block.sets) {
+        if (!current.sets[set.id].completed) {
+          tx.delete(setLogs).where(eq(setLogs.id, set.id)).run();
+        }
+      }
+    }
+    for (const set of validation.completedSets) {
+      tx.update(setLogs).set({ reps: set.reps, weight: set.weight, completed: true })
+        .where(eq(setLogs.id, set.id)).run();
+    }
+    tx.update(workouts).set({ name: current.name.trim() || 'Workout', completedAt: nowIso() })
+      .where(eq(workouts.id, workoutId)).run();
+    tx.delete(workoutDrafts).where(eq(workoutDrafts.workoutId, workoutId)).run();
+  }, { behavior: 'immediate' });
 }
 
 export function abandonWorkout(workoutId: string) {
   getDb().delete(workouts).where(eq(workouts.id, workoutId)).run();
 }
 
-/** Per completed workout: volume for this exercise (sum reps*weight of completed sets) */
-export function getExerciseVolumeHistory(exerciseId: string, days = 365) {
-  const db = getDb();
-  const cutoff = new Date();
-  cutoff.setDate(cutoff.getDate() - days);
-  const cutoffIso = cutoff.toISOString();
+type PerformedSet = {
+  exerciseId: string;
+  workoutId: string;
+  workoutName: string;
+  completedAt: string;
+  reps: number;
+  weight: number;
+};
 
-  const completed = db
-    .select()
-    .from(workouts)
-    .where(and(isNotNull(workouts.completedAt), gte(workouts.completedAt, cutoffIso)))
-    .all();
-  const workoutIds = completed.map((w) => w.id);
-  if (!workoutIds.length) return [];
-
-  const wes = db
-    .select()
-    .from(workoutExercises)
-    .where(
-      and(
-        eq(workoutExercises.exerciseId, exerciseId),
-        inArray(workoutExercises.workoutId, workoutIds),
-      ),
+/**
+ * One eligibility rule for progress and previous-performance hints. A checked set
+ * in a finished workout counts only when its stored numbers are valid. Older
+ * versions allowed invalid and unchecked sets to leak into these summaries.
+ * Repeated exercise blocks remain in workout order instead of replacing one another.
+ */
+function getPerformedSetHistory(exerciseIds: string[], days?: number): PerformedSet[] {
+  if (!exerciseIds.length) return [];
+  const cutoff = days === undefined ? undefined : new Date(Date.now() - days * 86_400_000).toISOString();
+  const rows = getDb()
+    .select({
+      exerciseId: workoutExercises.exerciseId,
+      workoutId: workouts.id,
+      workoutName: workouts.name,
+      completedAt: workouts.completedAt,
+      reps: setLogs.reps,
+      weight: setLogs.weight,
+    })
+    .from(setLogs)
+    .innerJoin(workoutExercises, eq(setLogs.workoutExerciseId, workoutExercises.id))
+    .innerJoin(workouts, eq(workoutExercises.workoutId, workouts.id))
+    .where(and(
+      inArray(workoutExercises.exerciseId, exerciseIds),
+      isNotNull(workouts.completedAt),
+      eq(setLogs.completed, true),
+      cutoff ? gte(workouts.completedAt, cutoff) : undefined,
+    ))
+    .orderBy(
+      desc(workouts.completedAt),
+      desc(workouts.startedAt),
+      desc(workouts.id),
+      asc(workoutExercises.sortOrder),
+      asc(workoutExercises.id),
+      asc(setLogs.index),
+      asc(setLogs.id),
     )
     .all();
-  if (!wes.length) return [];
 
-  const weIds = wes.map((w) => w.id);
-  const allSets = db
-    .select()
-    .from(setLogs)
-    .where(inArray(setLogs.workoutExerciseId, weIds))
-    .all();
-  const setsByWe = new Map<string, (typeof setLogs.$inferSelect)[]>();
-  for (const s of allSets) {
-    const arr = setsByWe.get(s.workoutExerciseId);
-    if (arr) arr.push(s);
-    else setsByWe.set(s.workoutExerciseId, [s]);
-  }
+  return rows
+    .filter((row) => Number.isInteger(row.reps) && row.reps > 0 &&
+      Number.isFinite(row.weight) && row.weight >= 0)
+    .map((row) => ({ ...row, completedAt: row.completedAt! }));
+}
 
-  const byWorkout = new Map<string, number>();
-  for (const we of wes) {
-    let vol = 0;
-    for (const s of setsByWe.get(we.id) ?? []) {
-      if (s.completed) vol += s.reps * s.weight;
+export type ExerciseProgressPoint = {
+  workoutId: string;
+  date: string;
+  label: string;
+  /** Heaviest completed weight, with the most reps as the tie breaker. */
+  maxWeight: number;
+  reps: number;
+  volume: number;
+  setCount: number;
+};
+
+/** One point per performed session, including sessions with zero added weight. */
+export function getExerciseProgressHistory(exerciseId: string, days = 365): ExerciseProgressPoint[] {
+  const byWorkout = new Map<string, ExerciseProgressPoint>();
+  for (const set of getPerformedSetHistory([exerciseId], days)) {
+    const point = byWorkout.get(set.workoutId);
+    if (!point) {
+      byWorkout.set(set.workoutId, {
+        workoutId: set.workoutId,
+        date: set.completedAt,
+        label: set.workoutName,
+        maxWeight: set.weight,
+        reps: set.reps,
+        volume: set.reps * set.weight,
+        setCount: 1,
+      });
+      continue;
     }
-    byWorkout.set(we.workoutId, (byWorkout.get(we.workoutId) ?? 0) + vol);
+    point.volume += set.reps * set.weight;
+    point.setCount += 1;
+    if (set.weight > point.maxWeight || (set.weight === point.maxWeight && set.reps > point.reps)) {
+      point.maxWeight = set.weight;
+      point.reps = set.reps;
+    }
   }
+  // The selector is newest first; charts display oldest first with stable tie ordering.
+  return [...byWorkout.values()].reverse();
+}
 
-  return completed
-    .filter((w) => (byWorkout.get(w.id) ?? 0) > 0)
-    .map((w) => ({
-      date: w.completedAt!,
-      volume: byWorkout.get(w.id) ?? 0,
-      label: w.name,
-    }))
-    .sort((a, b) => a.date.localeCompare(b.date));
+/** Volume is workload (reps × weight), not the weight lifted. */
+export function getExerciseVolumeHistory(exerciseId: string, days = 365) {
+  return getExerciseProgressHistory(exerciseId, days);
 }
 
 export function getExerciseMaxWeightHistory(exerciseId: string, days = 365) {
-  const db = getDb();
-  const cutoff = new Date();
-  cutoff.setDate(cutoff.getDate() - days);
-  const cutoffIso = cutoff.toISOString();
-
-  const completed = db
-    .select()
-    .from(workouts)
-    .where(and(isNotNull(workouts.completedAt), gte(workouts.completedAt, cutoffIso)))
-    .all();
-  const workoutIds = completed.map((w) => w.id);
-  if (!workoutIds.length) return [];
-
-  const wes = db
-    .select()
-    .from(workoutExercises)
-    .where(
-      and(
-        eq(workoutExercises.exerciseId, exerciseId),
-        inArray(workoutExercises.workoutId, workoutIds),
-      ),
-    )
-    .all();
-  if (!wes.length) return [];
-
-  const weIds = wes.map((w) => w.id);
-  const allSets = db
-    .select()
-    .from(setLogs)
-    .where(inArray(setLogs.workoutExerciseId, weIds))
-    .all();
-  const setsByWe = new Map<string, (typeof setLogs.$inferSelect)[]>();
-  for (const s of allSets) {
-    const arr = setsByWe.get(s.workoutExerciseId);
-    if (arr) arr.push(s);
-    else setsByWe.set(s.workoutExerciseId, [s]);
-  }
-
-  const maxByWorkout = new Map<string, number>();
-  for (const we of wes) {
-    const completedSets = (setsByWe.get(we.id) ?? []).filter((s) => s.completed);
-    const m = completedSets.length ? Math.max(...completedSets.map((s) => s.weight)) : 0;
-    maxByWorkout.set(we.workoutId, Math.max(maxByWorkout.get(we.workoutId) ?? 0, m));
-  }
-
-  return completed
-    .filter((w) => (maxByWorkout.get(w.id) ?? 0) > 0)
-    .map((w) => ({
-      date: w.completedAt!,
-      maxWeight: maxByWorkout.get(w.id) ?? 0,
-      label: w.name,
-    }))
-    .sort((a, b) => a.date.localeCompare(b.date));
+  return getExerciseProgressHistory(exerciseId, days);
 }
 
 export type LastExerciseData = {
+  workoutId: string;
   workoutName: string;
   completedAt: string;
   sets: Array<{ index: number; reps: number; weight: number }>;
 };
 
-/**
- * For each exerciseId, return the sets from the most recent completed workout
- * that included that exercise. Exercises with no history are omitted from the map.
- */
+/** Most recent performed session per exercise, skipping empty or skipped sessions. */
 export function getLastWorkoutDataForExercises(
   exerciseIds: string[],
 ): Map<string, LastExerciseData> {
-  if (!exerciseIds.length) return new Map();
-  const db = getDb();
-
-  const completedWorkouts = db
-    .select()
-    .from(workouts)
-    .where(isNotNull(workouts.completedAt))
-    .orderBy(desc(workouts.completedAt))
-    .all();
-
-  if (!completedWorkouts.length) return new Map();
-
-  const completedWorkoutIds = completedWorkouts.map((w) => w.id);
-  const workoutMap = new Map(completedWorkouts.map((w) => [w.id, w]));
-
-  const wes = db
-    .select()
-    .from(workoutExercises)
-    .where(
-      and(
-        inArray(workoutExercises.exerciseId, exerciseIds),
-        inArray(workoutExercises.workoutId, completedWorkoutIds),
-      ),
-    )
-    .all();
-
-  if (!wes.length) return new Map();
-
-  // Keep only the most recent workout_exercise per exercise
-  const latestWeByExercise = new Map<string, typeof workoutExercises.$inferSelect>();
-  for (const we of wes) {
-    const existing = latestWeByExercise.get(we.exerciseId);
-    if (!existing) {
-      latestWeByExercise.set(we.exerciseId, we);
-    } else {
-      const existingAt = workoutMap.get(existing.workoutId)?.completedAt ?? '';
-      const thisAt = workoutMap.get(we.workoutId)?.completedAt ?? '';
-      if (thisAt > existingAt) latestWeByExercise.set(we.exerciseId, we);
+  const result = new Map<string, LastExerciseData>();
+  for (const set of getPerformedSetHistory(exerciseIds)) {
+    let previous = result.get(set.exerciseId);
+    if (!previous) {
+      previous = {
+        workoutId: set.workoutId,
+        workoutName: set.workoutName,
+        completedAt: set.completedAt,
+        sets: [],
+      };
+      result.set(set.exerciseId, previous);
+    }
+    if (previous.workoutId === set.workoutId) {
+      previous.sets.push({
+        index: previous.sets.length,
+        reps: set.reps,
+        weight: set.weight,
+      });
     }
   }
-
-  const latestWeIds = [...latestWeByExercise.values()].map((we) => we.id);
-  const allSets = db
-    .select()
-    .from(setLogs)
-    .where(inArray(setLogs.workoutExerciseId, latestWeIds))
-    .orderBy(asc(setLogs.index))
-    .all();
-
-  const setsByWe = new Map<string, (typeof setLogs.$inferSelect)[]>();
-  for (const s of allSets) {
-    const arr = setsByWe.get(s.workoutExerciseId);
-    if (arr) arr.push(s);
-    else setsByWe.set(s.workoutExerciseId, [s]);
-  }
-
-  const result = new Map<string, LastExerciseData>();
-  for (const [exerciseId, we] of latestWeByExercise) {
-    const workout = workoutMap.get(we.workoutId)!;
-    const sets = (setsByWe.get(we.id) ?? []).map((s) => ({
-      index: s.index,
-      reps: s.reps,
-      weight: s.weight,
-    }));
-    result.set(exerciseId, {
-      workoutName: workout.name,
-      completedAt: workout.completedAt!,
-      sets,
-    });
-  }
-
   return result;
 }
 
@@ -751,6 +785,20 @@ export function replaceMesocycleStructure(
   }>,
 ) {
   getDb().transaction((tx) => {
+    // Older running blocks may not have a snapshot yet. Capture their current
+    // program before replacing the reusable definition and its row IDs.
+    const legacyActives = tx.select().from(activeMesocycles)
+      .where(and(eq(activeMesocycles.mesocycleId, mesocycleId), isNull(activeMesocycles.structureSnapshot)))
+      .all();
+    if (legacyActives.length > 0) {
+      const detail = getMesocycleDetail(mesocycleId);
+      if (detail) {
+        for (const active of legacyActives) {
+          tx.update(activeMesocycles).set({ structureSnapshot: JSON.stringify(detail) })
+            .where(eq(activeMesocycles.id, active.id)).run();
+        }
+      }
+    }
     // Delete existing
     const existingWorkouts = tx
       .select({ id: mesocycleWorkouts.id })
@@ -816,7 +864,15 @@ export function replaceMesocycleStructure(
 }
 
 export function deleteMesocycle(id: string) {
-  getDb().delete(mesocycles).where(eq(mesocycles.id, id)).run();
+  return getDb().transaction((tx) => {
+    // Definition deletion cascades to instances at the schema level. Refuse it
+    // whenever an instance exists so saved programs, maxes and session links survive.
+    const instance = tx.select({ id: activeMesocycles.id }).from(activeMesocycles)
+      .where(eq(activeMesocycles.mesocycleId, id)).limit(1).get();
+    if (instance) return false;
+    tx.delete(mesocycles).where(eq(mesocycles.id, id)).run();
+    return true;
+  }, { behavior: 'immediate' });
 }
 
 // --- Active Mesocycles ---
@@ -825,12 +881,18 @@ export function startActiveMesocycle(
   mesocycleId: string,
   maxes: Array<{ exerciseId: string; weight: number }>,
 ) {
-  const meso = getDb()
-    .select()
-    .from(mesocycles)
-    .where(eq(mesocycles.id, mesocycleId))
-    .get();
-  if (!meso) return null;
+  const detail = getMesocycleDetail(mesocycleId);
+  if (!detail) return null;
+
+  const focusIds = new Set(detail.workouts.flatMap((workout) =>
+    workout.exercises.filter((item) => item.mesoExercise.isFocus).map((item) => item.exercise.id),
+  ));
+  const maxMap = new Map(maxes.map((item) => [item.exerciseId, item.weight]));
+  if (maxMap.size !== maxes.length || maxes.some((item) =>
+    !focusIds.has(item.exerciseId) || !Number.isFinite(item.weight) || item.weight <= 0,
+  ) || [...focusIds].some((exerciseId) => !maxMap.has(exerciseId))) {
+    throw new Error('Enter a positive training max for each focus lift.');
+  }
 
   const id = nanoid();
   return getDb().transaction((tx) => {
@@ -838,8 +900,9 @@ export function startActiveMesocycle(
       .values({
         id,
         mesocycleId,
-        name: meso.name,
+        name: detail.mesocycle.name,
         startedAt: nowIso(),
+        structureSnapshot: JSON.stringify(detail),
       })
       .run();
 
@@ -866,36 +929,70 @@ export function listActiveMesocycles() {
     .all();
 }
 
-export function getActiveMesocycleDetail(activeId: string) {
+export type ActiveMesocycleDetail = {
+  active: typeof activeMesocycles.$inferSelect;
+  mesoDetail: MesocycleDetail;
+  maxes: (typeof activeMesocycleMaxes.$inferSelect)[];
+  workoutsCompleted: (typeof workouts.$inferSelect)[];
+  workoutsInProgress: (typeof workouts.$inferSelect)[];
+};
+
+export function getActiveMesocycleDetail(activeId: string): ActiveMesocycleDetail | null {
   const db = getDb();
-  const active = db
-    .select()
-    .from(activeMesocycles)
-    .where(eq(activeMesocycles.id, activeId))
-    .get();
-  if (!active) return null;
+  return db.transaction((tx) => {
+    const active = tx.select().from(activeMesocycles)
+      .where(eq(activeMesocycles.id, activeId)).get();
+    if (!active) return null;
 
-  const mesoDetail = getMesocycleDetail(active.mesocycleId);
-  if (!mesoDetail) return null;
+    let mesoDetail: MesocycleDetail | null;
+    if (active.structureSnapshot === null) {
+      mesoDetail = getMesocycleDetail(active.mesocycleId);
+      if (!mesoDetail) return null;
+      active.structureSnapshot = JSON.stringify(mesoDetail);
+      tx.update(activeMesocycles).set({ structureSnapshot: active.structureSnapshot })
+        .where(eq(activeMesocycles.id, activeId)).run();
+    } else {
+      try {
+        mesoDetail = JSON.parse(active.structureSnapshot) as MesocycleDetail;
+        if (!mesoDetail?.mesocycle || !Array.isArray(mesoDetail.workouts)) return null;
+      } catch {
+        return null;
+      }
+    }
 
-  const maxes = db
-    .select()
-    .from(activeMesocycleMaxes)
-    .where(eq(activeMesocycleMaxes.activeMesocycleId, activeId))
-    .all();
-  
-  const workoutsCompleted = db
-    .select()
-    .from(workouts)
-    .where(and(eq(workouts.activeMesocycleId, activeId), isNotNull(workouts.completedAt)))
-    .all();
+    const sessions = tx.select().from(workouts)
+      .where(eq(workouts.activeMesocycleId, activeId))
+      .orderBy(asc(workouts.startedAt), asc(workouts.id)).all();
 
-  return {
-    active,
-    mesoDetail,
-    maxes,
-    workoutsCompleted,
-  };
+    // Legacy sessions have no stable slot ID. Only adopt a session when both
+    // the exact generated name and the session itself identify a unique slot.
+    // Ambiguous history stays untouched rather than checking off the wrong slot.
+    for (const session of sessions) {
+      const week = session.mesocycleWeek;
+      if (session.mesocycleSlotId !== null || week === null || !Number.isInteger(week)
+        || week < 1 || week > mesoDetail.mesocycle.weeks) continue;
+      const candidates = mesoDetail.workouts.filter((item) =>
+        session.name === `${item.workout.name} - W${week}`,
+      );
+      if (candidates.length !== 1) continue;
+      const slotId = candidates[0].workout.id;
+      const matchingSessions = sessions.filter((item) => item.mesocycleWeek === week
+        && (item.mesocycleSlotId === slotId || item.name === session.name));
+      if (matchingSessions.length !== 1) continue;
+      tx.update(workouts).set({ mesocycleSlotId: slotId })
+        .where(eq(workouts.id, session.id)).run();
+      session.mesocycleSlotId = slotId;
+    }
+
+    return {
+      active,
+      mesoDetail,
+      maxes: tx.select().from(activeMesocycleMaxes)
+        .where(eq(activeMesocycleMaxes.activeMesocycleId, activeId)).all(),
+      workoutsCompleted: sessions.filter((workout) => workout.completedAt !== null),
+      workoutsInProgress: sessions.filter((workout) => workout.completedAt === null),
+    };
+  }, { behavior: 'immediate' });
 }
 
 export function startWorkoutFromMesocycleDay(
@@ -903,48 +1000,36 @@ export function startWorkoutFromMesocycleDay(
   mesocycleWorkoutId: string,
   weekNumber: number,
 ) {
-  const db = getDb();
-  const active = db
-    .select()
-    .from(activeMesocycles)
-    .where(eq(activeMesocycles.id, activeMesocycleId))
-    .get();
-  if (!active) return null;
+  const detail = getActiveMesocycleDetail(activeMesocycleId);
+  if (!detail || detail.active.completedAt !== null || !Number.isInteger(weekNumber)
+    || weekNumber < 1 || weekNumber > detail.mesoDetail.mesocycle.weeks) return null;
 
-  const mw = db
-    .select()
-    .from(mesocycleWorkouts)
-    .where(eq(mesocycleWorkouts.id, mesocycleWorkoutId))
-    .get();
-  if (!mw) return null;
+  const slot = detail.mesoDetail.workouts.find((item) => item.workout.id === mesocycleWorkoutId);
+  if (!slot) return null;
+  const maxMap = new Map(detail.maxes.map((m) => [m.exerciseId, m.weight]));
 
-  const maxes = db
-    .select()
-    .from(activeMesocycleMaxes)
-    .where(eq(activeMesocycleMaxes.activeMesocycleId, activeMesocycleId))
-    .all();
-  const maxMap = new Map(maxes.map((m) => [m.exerciseId, m.weight]));
+  return getDb().transaction((tx) => {
+    const existing = tx.select().from(workouts).where(and(
+      eq(workouts.activeMesocycleId, activeMesocycleId),
+      eq(workouts.mesocycleSlotId, mesocycleWorkoutId),
+      eq(workouts.mesocycleWeek, weekNumber),
+    )).get();
+    if (existing) return existing;
 
-  const mes = db
-    .select()
-    .from(mesocycleExercises)
-    .where(eq(mesocycleExercises.mesocycleWorkoutId, mw.id))
-    .orderBy(asc(mesocycleExercises.sortOrder))
-    .all();
-
-  const workoutId = nanoid();
-  return db.transaction((tx) => {
+    const workoutId = nanoid();
     tx.insert(workouts)
       .values({
         id: workoutId,
         activeMesocycleId,
+        mesocycleSlotId: mesocycleWorkoutId,
         mesocycleWeek: weekNumber,
-        name: `${mw.name} - W${weekNumber}`,
+        name: `${slot.workout.name} - W${weekNumber}`,
         startedAt: nowIso(),
       })
       .run();
 
-    for (const me of mes) {
+    for (const item of slot.exercises) {
+      const me = item.mesoExercise;
       const weId = nanoid();
       tx.insert(workoutExercises)
         .values({
@@ -955,36 +1040,18 @@ export function startWorkoutFromMesocycleDay(
         })
         .run();
 
-      const sets = tx
-        .select()
-        .from(mesocycleSets)
-        .where(
-          and(
-            eq(mesocycleSets.mesocycleExerciseId, me.id),
-            // weekNumber is null for accessories (applies to all weeks)
-            me.isFocus 
-              ? eq(mesocycleSets.weekNumber, weekNumber)
-              : isNull(mesocycleSets.weekNumber)
-          )
-        )
-        .orderBy(asc(mesocycleSets.index))
-        .all();
-
-      for (const s of sets) {
-        let targetWeight = 0;
-        if (me.isFocus && s.targetPercentage !== null) {
-          const max = maxMap.get(me.exerciseId) ?? 0;
-          targetWeight = (max * s.targetPercentage) / 100;
-          // Round to nearest 2.5 (common in gyms) or keep as is? 
-          // Let's keep it exact for now, UI can format it.
-        }
-
+      const sets = item.sets.filter((set) => me.isFocus
+        ? set.weekNumber === weekNumber : set.weekNumber === null);
+      for (const [index, set] of sets.entries()) {
+        const targetWeight = me.isFocus && set.targetPercentage !== null
+          ? ((maxMap.get(me.exerciseId) ?? 0) * set.targetPercentage) / 100
+          : 0;
         tx.insert(setLogs)
           .values({
             id: nanoid(),
             workoutExerciseId: weId,
-            index: s.index,
-            reps: s.targetReps,
+            index,
+            reps: set.targetReps,
             weight: targetWeight,
             completed: false,
           })

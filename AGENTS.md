@@ -24,7 +24,7 @@ This file is meant to be a practical future handoff: it keeps the project rules,
 ### Main user flows
 
 - **Home**: start an empty workout, jump into active workouts, navigate to the library/history.
-- **Exercises**: browse, create, edit, delete, and review progress charts per exercise.
+- **Exercises**: browse, create, edit, archive/restore, and review progress charts per exercise.
 - **Templates**: create reusable workouts with ordered exercises and default sets.
 - **Mesocycles / Blocks**: create longer training blocks, define ordered workouts, mark focus lifts, and generate week-specific workouts from stored percentages.
 - **History**: browse completed workouts.
@@ -33,6 +33,9 @@ This file is meant to be a practical future handoff: it keeps the project rules,
 ### Important current UX decisions
 
 - Theme selection is fully app-driven and persisted locally. Do not reintroduce hard-coded global theme imports inside screens/components.
+- Workout inputs remain raw strings while editing. Validate checked sets only on **Finish**, never during typing, blur, or checking a set. Finish explicitly confirms that unchecked sets will be skipped and removed.
+- The default progress chart shows the heaviest completed weight per workout with that set's reps. Zero weight is valid for bodyweight/no added weight; volume is a secondary workload measure.
+- Exercise removal means archival. Keep exercise identities and references intact so logged history, templates, and active block snapshots remain usable.
 - Mesocycles are currently modeled as an **ordered list of workouts**, even though the DB column is still named `day_number`. Treat that field as workout order, not literal calendar day. This matters because rest days may exist between workouts.
 - The mesocycle builder intentionally uses **string-backed input editing** for percentage and rep fields so users can type partial numeric values like `.5` or `72.5` without aggressive coercion.
 - The mesocycle builder supports **duplicate workout** and **duplicate all workouts** flows to make split-based programming like PPL repeated twice per week much faster to create.
@@ -75,6 +78,9 @@ components/
     Card.tsx
     TextField.tsx
     SettingsSection.tsx      # Reusable settings rows/sections
+  workout/
+    SetRow.tsx               # Controlled set inputs and completion checkbox
+    useWorkoutDraft.ts       # Workout-level draft state, immediate local saves/retry
 
 constants/
   theme.ts                   # Built-in app themes and shared tokens
@@ -87,6 +93,7 @@ db/
 
 lib/
   queries.ts                 # All app data access and write operations
+  workoutDraft.ts            # Pure raw draft types/reconciliation and explicit validation
   utils.ts                   # Formatting helpers used by workout/history UIs
 ```
 
@@ -136,11 +143,15 @@ The app uses Drizzle ORM over `expo-sqlite`, but migrations currently live in ra
 
 Do not add ad hoc SQL elsewhere in the app. All app-level reads/writes belong in `lib/queries.ts`.
 
+Migrations update `PRAGMA user_version` inside each migration transaction. Opening a newer-than-supported database fails without downgrading it. `db/client.ts` caches a connection only after initialization succeeds, closing failed connections so a retry can rerun initialization. The current schema version is 3.
+
 ### Core tables
 
 **`exercises`**
 - Exercise library
-- `id`, `name`, `notes`, `created_at`
+- `id`, `name`, `notes`, `created_at`, nullable `archived_at`
+- `listExercises()` excludes archived entries; `listExercises({ archived: true })` returns archived entries only
+- `getExercise()` and existing program/history reads retain access to archived exercises
 
 **`workout_templates`**
 - Reusable template metadata
@@ -159,7 +170,14 @@ Do not add ad hoc SQL elsewhere in the app. All app-level reads/writes belong in
 - `template_id` nullable
 - `active_mesocycle_id` nullable
 - `mesocycle_week` nullable
+- `mesocycle_slot_id` nullable; identifies a workout slot in the active block snapshot, with no foreign key to the editable definition
+- Unique index on `active_mesocycle_id`, `mesocycle_slot_id`, and `mesocycle_week`
 - `name`, `started_at`, `completed_at`
+
+**`workout_drafts`**
+- One row per unfinished workout: `workout_id` primary key, JSON `payload`
+- Versioned payload stores the raw workout name and string reps/weight plus completion state, keyed by set ID
+- Cascade-deleted when a workout is discarded; removed in the same transaction that finishes a workout
 
 **`workout_exercises`**
 - Ordered exercises inside a logged workout
@@ -189,6 +207,8 @@ Do not add ad hoc SQL elsewhere in the app. All app-level reads/writes belong in
 
 **`active_mesocycles`**
 - Running block instance
+- Nullable `structure_snapshot` JSON stores the full `MesocycleDetail` captured at start, including stable workout slot IDs
+- Null is reserved for older blocks awaiting snapshot adoption
 
 **`active_mesocycle_maxes`**
 - Stored training maxes / 1RM inputs used to convert percentages to workout weights
@@ -198,6 +218,7 @@ Do not add ad hoc SQL elsewhere in the app. All app-level reads/writes belong in
 - All IDs are text IDs generated in app code
 - Timestamps are ISO 8601 strings
 - Child tables generally use cascade deletes
+- Never hard-delete library exercises: physical cascade relationships still exist. `archiveExercise()` and the compatibility `deleteExercise()` both archive; `restoreExercise()` clears the archive timestamp.
 - `workouts.template_id` and `workouts.active_mesocycle_id` use set-null semantics
 
 ---
@@ -205,6 +226,14 @@ Do not add ad hoc SQL elsewhere in the app. All app-level reads/writes belong in
 ## Query Layer Notes
 
 `lib/queries.ts` is the single most important file for app behavior.
+
+### Exercise-related
+
+- `listExercises()`, `getExercise()`, `createExercise()`, `updateExercise()`
+- `archiveExercise()`, `restoreExercise()`
+- `getExerciseProgressHistory()`
+- Progress and `getLastWorkoutDataForExercises()` share the performed-set selector: checked sets in finished workouts, positive integer reps, finite nonnegative weight. Combine repeated blocks of the same exercise and ignore empty/skipped sessions.
+- The heaviest-set tie breaker is the most reps; chart points include workout identity/date, weight, reps, volume, and completed-set count.
 
 ### Template-related
 
@@ -219,6 +248,8 @@ Do not add ad hoc SQL elsewhere in the app. All app-level reads/writes belong in
 
 - `createEmptyWorkout()`
 - `getWorkoutDetail()`
+- `getWorkoutDraft()`
+- `saveWorkoutDraft()`
 - `addExerciseToWorkout()`
 - `addSetToWorkoutExercise()`
 - `removeLastSet()`
@@ -229,6 +260,16 @@ Do not add ad hoc SQL elsewhere in the app. All app-level reads/writes belong in
 - `abandonWorkout()`
 - `listWorkoutHistory()`
 - `getLastWorkoutDataForExercises()`
+
+### Workout draft behavior
+
+- `lib/workoutDraft.ts` owns `WorkoutDraft`, `SetDraft`, structural reconciliation, and numeric parsing/validation. It performs no database operations.
+- `components/workout/useWorkoutDraft.ts` owns the current draft independently of rendered/collapsed rows. Changes update the current draft immediately and save raw strings synchronously through the query layer. Save failures remain visible with retry.
+- Structural reloads preserve raw input for existing set IDs. Adding a set copies the latest raw reps/weight from the preceding set, including partial text.
+- Set checkboxes, add controls, and Finish consume current draft state directly; they must not depend on blur, debounced saves, or reloading parsed values.
+- `completeWorkout()` validates checked sets and atomically writes their numeric values, deletes unchecked sets, marks the workout complete, and deletes the draft. Failure preserves the unfinished workout and draft.
+- Positive whole-number reps and finite weights of zero or more are valid. Unchecked sets are skipped without numeric validation, after explicit confirmation in the screen. Finishing with zero performed sets also requires explicit confirmation.
+- `SetRow.tsx` contains controlled inputs. Keep `keyboardShouldPersistTaps="handled"` on logger/picker scroll containers and `onRequestClose` on modals for Android Back.
 
 ### Mesocycle-related
 
@@ -245,12 +286,17 @@ Do not add ad hoc SQL elsewhere in the app. All app-level reads/writes belong in
 ### Important mesocycle behavior
 
 - `replaceMesocycleStructure()` currently rewrites the full structure by deleting existing mesocycle workouts/exercises/sets and inserting the new ordered structure.
+- Active blocks use an immutable snapshot captured by `startActiveMesocycle()`. Before rewriting a reusable definition, capture snapshots for older blocks that still have null snapshots.
+- `deleteMesocycle()` returns `false` without changes if any running or completed block instance references the definition. The UI explains that used plans cannot be deleted; unused definitions can still be deleted. Keep this guard because the physical parent relationship still cascades.
+- `getActiveMesocycleDetail()` also adopts missing legacy snapshots. Legacy sessions receive a slot ID only when their exact generated name and week identify a unique slot and a unique session; ambiguous history remains unassigned and preserved.
 - `getMesocycleDetail()` sorts workouts by `day_number`; that is effectively the workout order shown in the UI.
 - `startWorkoutFromMesocycleDay()`
-  - Builds a real workout from one stored mesocycle workout
+  - Builds a real workout from one slot in the active block snapshot
   - Pulls week-specific focus sets for the requested week
   - Pulls accessory sets where `week_number IS NULL`
   - Converts percentages into actual target weights using `active_mesocycle_maxes`
+  - Returns the existing session for the same active block, slot, and week instead of creating duplicates
+- The active block screen refreshes on focus, opens unfinished sessions in `/workout/[id]`, and opens completed sessions in `/session/[id]`. Completion tracking uses slot IDs, never name prefixes.
 
 ---
 
@@ -304,8 +350,19 @@ There are Bun tests for:
 - utility formatting
 - query behavior
 - mesocycle creation / active block flows
+- performed-set progress calculations, bodyweight sessions, and exercise archival
+- fresh/legacy database migrations, rollback/version handling, and connection initialization retries
+
+`__tests__/helpers/db.ts` runs the production migrations against an in-memory Bun SQLite adapter with `seed: false`; do not maintain a separate test schema. Migration fixtures apply historical production migrations before upgrading, including templates, logged history, active maxes, and ambiguous legacy sessions.
 
 If you change mesocycle persistence or query behavior, update/add tests in `__tests__/mesocycles.test.ts`.
+
+Android device/emulator verification is still required; Bun tests do not establish keyboard or touch behavior. Check:
+
+- Type a partial decimal, immediately check a set or add a set/exercise, and verify the first tap works without scrolling or losing text.
+- Collapse/reopen exercises and leave/reopen an unfinished workout; confirm raw drafts survive, including an app restart.
+- Finish with an invalid checked set and verify inline errors; finish with unchecked sets and verify the confirmation and resulting history. Check zero-weight sets too.
+- Dismiss exercise pickers using Android Back, inspect bodyweight chart points, and resume a block workout after editing its reusable definition.
 
 ---
 
@@ -328,7 +385,23 @@ If you change mesocycle persistence or query behavior, update/add tests in `__te
 
 ## Development Environment
 
-- OS: Arch Linux
-- Shell: fish for the user, but commands may run under bash in tooling
-- AUR helper: `yay`
-- Prefer Arch / AUR when suggesting system packages
+
+- Bun is installed at `$HOME/.bun/bin/bun`; `bunx` is alongside it. Version verified during this refactor: `1.4.2`.
+- Tooling shells may omit `$HOME/.bun/bin` from `PATH`. If `bun` is not found, check that location and prepend it for the command instead of assuming Bun is uninstalled or switching package managers.
+- Install the locked dependencies with `bun install --frozen-lockfile`. Package downloads need network access; sandbox DNS failures may require retrying with network permission.
+
+Commands for bash-based tooling when Bun is absent from `PATH`:
+
+```bash
+PATH="$HOME/.bun/bin:$PATH" bun install --frozen-lockfile
+PATH="$HOME/.bun/bin:$PATH" bun run typecheck
+PATH="$HOME/.bun/bin:$PATH" bun test
+```
+
+Android JavaScript/Hermes bundling can be verified without a device:
+
+```bash
+PATH="$HOME/.bun/bin:$PATH" EXPO_NO_DOTENV=1 EXPO_NO_TELEMETRY=1 CI=1 bunx expo export --platform android --output-dir /tmp/grindstone-android-export
+```
+
+`EXPO_NO_DOTENV=1` keeps verification from loading local environment files. Export artifacts go outside the repository. This export verifies bundling, not an APK build or native interactions. `adb` was not available on the agent tooling shell's `PATH` during this refactor; keyboard, touch, and Android Back behavior still require a device or emulator.

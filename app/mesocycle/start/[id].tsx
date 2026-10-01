@@ -1,6 +1,6 @@
 import { Stack, useLocalSearchParams, useRouter, type Href } from 'expo-router';
 import React, { useEffect, useState } from 'react';
-import { ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Alert, ScrollView, StyleSheet, Text } from 'react-native';
 
 import { useThemedStyles } from '@/components/theme/useThemedStyles';
 import { Button } from '@/components/ui/Button';
@@ -32,17 +32,21 @@ export default function StartMesocycleScreen() {
   const handleStart = () => {
     const maxes = focusLifts.map(l => ({
       exerciseId: l.id,
-      weight: parseFloat(l.max) || 0
+      weight: l.max.trim() === '' ? NaN : Number(l.max)
     }));
 
-    const activeId = startActiveMesocycle(id, maxes);
-    if (activeId) {
-      router.replace(`/mesocycle/active/${activeId}` as Href);
+    try {
+      const activeId = startActiveMesocycle(id, maxes);
+      if (activeId) {
+        router.replace(`/mesocycle/active/${activeId}` as Href);
+      }
+    } catch (error) {
+      Alert.alert('Could not start block', error instanceof Error ? error.message : 'Please try again.');
     }
   };
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
+    <ScrollView style={styles.container} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
       <Stack.Screen options={{ title: 'Start Block' }} />
       <Text style={styles.title}>Set your 1-Rep Maxes</Text>
       <Text style={styles.sub}>These will be used to calculate your target weights for this block.</Text>

@@ -1,11 +1,12 @@
 import FontAwesome from '@expo/vector-icons/FontAwesome';
+import { usePreventRemove } from '@react-navigation/native';
 import * as Haptics from 'expo-haptics';
-import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
-import { MotiView } from 'moti';
+import { useFocusEffect, useLocalSearchParams, useNavigation, useRouter } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   Alert,
   FlatList,
+  Keyboard,
   LayoutAnimation,
   Modal,
   Pressable,
@@ -21,7 +22,10 @@ import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { TextField } from '@/components/ui/TextField';
 import type { AppTheme } from '@/constants/theme';
-import type { Exercise, SetLog } from '@/db/schema';
+import type { Exercise } from '@/db/schema';
+import { SetRow } from '@/components/workout/SetRow';
+import { useWorkoutDraft } from '@/components/workout/useWorkoutDraft';
+import { validateWorkoutDraft, type SetDraft, type SetInputErrors } from '@/lib/workoutDraft';
 import type { LastExerciseData, WorkoutDetail } from '@/lib/queries';
 import {
   abandonWorkout,
@@ -34,133 +38,62 @@ import {
   moveWorkoutExercise,
   removeLastSet,
   removeWorkoutExerciseBlock,
-  updateSetLog,
-  updateWorkoutName,
+  saveWorkoutDraft,
 } from '@/lib/queries';
 import { formatRelDate, fmtSet } from '@/lib/utils';
-
-function SetRow({
-  set,
-  onToggleComplete,
-  onUpdateReps,
-  onUpdateWeight,
-}: {
-  set: SetLog;
-  onToggleComplete: () => void;
-  onUpdateReps: (n: number) => void;
-  onUpdateWeight: (n: number) => void;
-}) {
-  const theme = useAppTheme();
-  const styles = useThemedStyles(createStyles);
-  const [reps, setReps] = useState(String(set.reps));
-  const [weight, setWeight] = useState(String(set.weight));
-  const debounceR = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
-  const debounceW = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
-
-  useEffect(() => {
-    return () => {
-      clearTimeout(debounceR.current);
-      clearTimeout(debounceW.current);
-    };
-  }, []);
-
-  useEffect(() => {
-    setReps(String(set.reps));
-    setWeight(String(set.weight));
-  }, [set.reps, set.weight, set.id]);
-
-  const scheduleReps = (t: string) => {
-    setReps(t);
-    clearTimeout(debounceR.current);
-    debounceR.current = setTimeout(() => {
-      onUpdateReps(parseInt(t, 10) || 0);
-    }, 400);
-  };
-
-  const scheduleWeight = (t: string) => {
-    setWeight(t);
-    clearTimeout(debounceW.current);
-    debounceW.current = setTimeout(() => {
-      onUpdateWeight(parseFloat(t) || 0);
-    }, 400);
-  };
-
-  return (
-    <MotiView
-      animate={{
-        opacity: set.completed ? 0.55 : 1,
-        translateX: set.completed ? 4 : 0,
-      }}
-      transition={{ type: 'timing', duration: 220 }}
-      style={[
-        styles.setRow,
-        set.completed && { borderColor: theme.colors.accent, backgroundColor: theme.colors.accentMuted },
-      ]}>
-      <Pressable
-        onPress={() => {
-          void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-          onToggleComplete();
-        }}
-        style={styles.checkWrap}>
-        <MotiView
-          animate={{ scale: set.completed ? 1 : 0.85 }}
-          transition={{ type: 'spring', damping: 14 }}>
-          <FontAwesome
-            name={set.completed ? 'check-circle' : 'circle-o'}
-            size={26}
-            color={set.completed ? theme.colors.accent : theme.colors.textMuted}
-          />
-        </MotiView>
-      </Pressable>
-      <Text style={styles.setLabel}>#{set.index + 1}</Text>
-      <TextField
-        style={styles.setInput}
-        keyboardType="number-pad"
-        value={reps}
-        onChangeText={scheduleReps}
-        onBlur={() => onUpdateReps(parseInt(reps, 10) || 0)}
-      />
-      <Text style={styles.times}>×</Text>
-      <TextField
-        style={styles.setInput}
-        keyboardType="decimal-pad"
-        value={weight}
-        onChangeText={scheduleWeight}
-        onBlur={() => onUpdateWeight(parseFloat(weight) || 0)}
-      />
-    </MotiView>
-  );
-}
 
 export default function WorkoutScreen() {
   const theme = useAppTheme();
   const styles = useThemedStyles(createStyles);
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
+  const navigation = useNavigation();
+  const [exitRoute, setExitRoute] = useState<'session' | 'back' | null>(null);
   const [detail, setDetail] = useState<WorkoutDetail | null>(null);
   const [lastData, setLastData] = useState<Map<string, LastExerciseData>>(new Map());
-  const [sessionTitle, setSessionTitle] = useState('');
+  const { draft, load: loadDraft, updateSet, updateName, getCurrent, saveError, retrySave } = useWorkoutDraft(id);
+  const [errors, setErrors] = useState<Record<string, SetInputErrors>>({});
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const scrollRef = useRef<ScrollView>(null);
+  const blockPositions = useRef<Record<string, number>>({});
   const [pickerOpen, setPickerOpen] = useState(false);
   const [exercises, setExercises] = useState<Exercise[]>([]);
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
 
   const refresh = useCallback(() => {
-    const d = getWorkoutDetail(id);
-    if (!d) {
-      router.back();
-      return;
+    try {
+      const d = getWorkoutDetail(id);
+      if (!d) {
+        router.back();
+        return;
+      }
+      if (d.workout.completedAt) {
+        router.replace(`/session/${id}`);
+        return;
+      }
+      loadDraft(d);
+      setDetail(d);
+      setLastData(getLastWorkoutDataForExercises(d.blocks.map((b) => b.exercise.id)));
+      setLoadError(null);
+    } catch (error) {
+      setLoadError(error instanceof Error ? error.message : 'Unable to load this workout.');
     }
-    if (d.workout.completedAt) {
-      router.replace(`/session/${id}`);
-      return;
-    }
-    setDetail(d);
-    setSessionTitle(d.workout.name);
-    const exIds = d.blocks.map((b) => b.exercise.id);
-    setLastData(getLastWorkoutDataForExercises(exIds));
-  }, [id]);
+  }, [id, router, loadDraft]);
 
   useFocusEffect(refresh);
+
+  usePreventRemove(Boolean(saveError) && exitRoute === null, ({ data }) => {
+    Alert.alert('Latest edits are not saved', 'Retry saving before leaving, or leave without your latest edits.', [
+      { text: 'Stay', style: 'cancel' },
+      { text: 'Retry save', onPress: retrySave },
+      { text: 'Leave without edits', style: 'destructive', onPress: () => navigation.dispatch(data.action) },
+    ]);
+  });
+
+  useEffect(() => {
+    if (exitRoute === 'session') router.replace(`/session/${id}`);
+    else if (exitRoute === 'back') router.back();
+  }, [exitRoute, id, router]);
 
   useEffect(() => {
     if (pickerOpen) setExercises(listExercises());
@@ -171,16 +104,57 @@ export default function WorkoutScreen() {
     setCollapsed((c) => ({ ...c, [weId]: !c[weId] }));
   };
 
+  const changeSet = useCallback((setId: string, patch: Partial<SetDraft>) => {
+    updateSet(setId, patch);
+    setErrors((previous) => {
+      if (!previous[setId]) return previous;
+      const next = { ...previous };
+      delete next[setId];
+      return next;
+    });
+  }, [updateSet]);
+
+  const changeStructure = (action: () => unknown) => {
+    try {
+      const latest = getCurrent();
+      if (latest) saveWorkoutDraft(id, latest);
+      action();
+      refresh();
+    } catch (error) {
+      Alert.alert('Unable to save change', error instanceof Error ? error.message : 'Please try again.');
+    }
+  };
+
   const finish = () => {
-    Alert.alert('Finish workout', 'Mark this session as complete?', [
+    const latest = getCurrent();
+    if (!latest) return;
+    const result = validateWorkoutDraft(latest);
+    setErrors(result.errors);
+    if (!result.valid) {
+      const firstBlock = detail?.blocks.find((block) => block.sets.some((set) => result.errors[set.id]));
+      if (firstBlock) {
+        setCollapsed((previous) => ({ ...previous, [firstBlock.workoutExercise.id]: false }));
+        scrollRef.current?.scrollTo({ y: blockPositions.current[firstBlock.workoutExercise.id] ?? 0, animated: true });
+      }
+      Alert.alert('Check your sets', 'Correct the highlighted reps and weight in checked sets, then finish again.');
+      return;
+    }
+    const message = result.completedSets.length === 0
+      ? 'No sets are checked. Finish without recording any performed sets? Unchecked sets will be removed.'
+      : result.skippedCount > 0
+        ? `Save ${result.completedSets.length} completed sets? ${result.skippedCount} unchecked sets will be skipped and removed.`
+        : 'Save your completed sets and finish this workout?';
+    Alert.alert('Finish workout', message, [
       { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Finish',
-        onPress: () => {
-          completeWorkout(id);
-          router.replace(`/session/${id}`);
-        },
-      },
+      { text: 'Finish', onPress: () => {
+        try {
+          completeWorkout(id, getCurrent() ?? latest);
+          Keyboard.dismiss();
+          setExitRoute('session');
+        } catch (error) {
+          Alert.alert('Unable to finish', error instanceof Error ? error.message : 'Your workout remains open. Please try again.');
+        }
+      } },
     ]);
   };
 
@@ -191,45 +165,53 @@ export default function WorkoutScreen() {
         text: 'Discard',
         style: 'destructive',
         onPress: () => {
-          abandonWorkout(id);
-          router.back();
+          try {
+            abandonWorkout(id);
+            setExitRoute('back');
+          } catch (error) {
+            Alert.alert('Unable to discard', error instanceof Error ? error.message : 'Please try again.');
+          }
         },
       },
     ]);
   };
 
-  const commitTitle = () => {
-    updateWorkoutName(id, sessionTitle);
-    refresh();
-  };
-
   const pickExercise = (ex: Exercise) => {
-    addExerciseToWorkout(id, ex.id);
-    setPickerOpen(false);
-    refresh();
+    changeStructure(() => {
+      addExerciseToWorkout(id, ex.id);
+      setPickerOpen(false);
+    });
   };
 
-  if (!detail) {
+  if (!detail || !draft) {
     return (
       <View style={styles.center}>
-        <Text style={styles.loading}>Loading…</Text>
+        <Text style={styles.loading}>{loadError ?? 'Loading…'}</Text>
+        {loadError && <Button onPress={refresh}>Retry</Button>}
       </View>
     );
   }
 
   return (
     <View style={styles.screen}>
-      <ScrollView contentContainerStyle={styles.scroll}>
+      <ScrollView ref={scrollRef} contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
         <TextField
           style={styles.titleInput}
-          value={sessionTitle}
-          onChangeText={setSessionTitle}
-          onBlur={commitTitle}
+          accessibilityLabel="Workout name"
+          value={draft.name}
+          onChangeText={updateName}
         />
         <Text style={styles.started}>
           Started {new Date(detail.workout.startedAt).toLocaleString()}
         </Text>
 
+        {(saveError || loadError) && (
+          <View style={styles.saveWarning}>
+            <Text accessibilityLiveRegion="polite" style={styles.error}>{saveError ?? loadError}</Text>
+            <Button variant="ghost" onPress={saveError ? retrySave : refresh}>Retry save</Button>
+          </View>
+        )}
+        <Text style={styles.started}>Reps × weight · Use 0 for bodyweight. Check the sets you perform.</Text>
         <View style={styles.toolbar}>
           <Button onPress={finish}>Finish workout</Button>
           <Button variant="ghost" onPress={discard}>
@@ -239,21 +221,26 @@ export default function WorkoutScreen() {
 
         <Pressable
           style={styles.addExerciseBtn}
-          onPress={() => setPickerOpen(true)}>
+          accessibilityRole="button"
+          accessibilityLabel="Add exercise"
+          onPress={() => { Keyboard.dismiss(); setPickerOpen(true); }}>
           <FontAwesome name="plus" size={14} color={theme.colors.accent} />
           <Text style={styles.addExerciseText}> Add exercise</Text>
         </Pressable>
 
         {detail.blocks.map((block) => {
           const isCollapsed = collapsed[block.workoutExercise.id];
-          const allDone = block.sets.length > 0 && block.sets.every((s) => s.completed);
+          const allDone = block.sets.length > 0 && block.sets.every((s) => draft.sets[s.id]?.completed);
           const prev = lastData.get(block.exercise.id);
           return (
-            <Card key={block.workoutExercise.id} style={styles.block}>
-              <Pressable
-                style={styles.blockTitleRow}
-                onPress={() => toggleCollapse(block.workoutExercise.id)}>
-                <View style={styles.blockTitleLeft}>
+            <View key={block.workoutExercise.id}
+              onLayout={(event) => { blockPositions.current[block.workoutExercise.id] = event.nativeEvent.layout.y; }}>
+            <Card style={styles.block}>
+              <View style={styles.blockTitleRow}>
+                <Pressable style={styles.blockTitleLeft}
+                  accessibilityRole="button" accessibilityLabel={`${block.exercise.name}, ${isCollapsed ? 'expand' : 'collapse'}`}
+                  accessibilityState={{ expanded: !isCollapsed }}
+                  onPress={() => toggleCollapse(block.workoutExercise.id)}>
                   <FontAwesome
                     name={isCollapsed ? 'chevron-right' : 'chevron-down'}
                     size={16}
@@ -266,23 +253,21 @@ export default function WorkoutScreen() {
                     ]}>
                     {block.exercise.name}
                   </Text>
-                </View>
+                </Pressable>
                 <View style={styles.blockActions}>
-                  <Pressable
+                  <Pressable style={styles.iconButton} accessibilityRole="button" accessibilityLabel={`Move ${block.exercise.name} up`}
                     onPress={() => {
-                      moveWorkoutExercise(block.workoutExercise.id, -1);
-                      refresh();
+                      changeStructure(() => moveWorkoutExercise(block.workoutExercise.id, -1));
                     }}>
                     <FontAwesome name="arrow-up" size={16} color={theme.colors.textMuted} />
                   </Pressable>
-                  <Pressable
+                  <Pressable style={styles.iconButton} accessibilityRole="button" accessibilityLabel={`Move ${block.exercise.name} down`}
                     onPress={() => {
-                      moveWorkoutExercise(block.workoutExercise.id, 1);
-                      refresh();
+                      changeStructure(() => moveWorkoutExercise(block.workoutExercise.id, 1));
                     }}>
                     <FontAwesome name="arrow-down" size={16} color={theme.colors.textMuted} />
                   </Pressable>
-                  <Pressable
+                  <Pressable style={styles.iconButton} accessibilityRole="button" accessibilityLabel={`Remove ${block.exercise.name}`}
                     onPress={() => {
                       Alert.alert('Remove exercise', 'Remove this movement from the workout?', [
                         { text: 'Cancel', style: 'cancel' },
@@ -290,8 +275,7 @@ export default function WorkoutScreen() {
                           text: 'Remove',
                           style: 'destructive',
                           onPress: () => {
-                            removeWorkoutExerciseBlock(block.workoutExercise.id);
-                            refresh();
+                            changeStructure(() => removeWorkoutExerciseBlock(block.workoutExercise.id));
                           },
                         },
                       ]);
@@ -299,7 +283,7 @@ export default function WorkoutScreen() {
                     <FontAwesome name="trash-o" size={16} color={theme.colors.danger} />
                   </Pressable>
                 </View>
-              </Pressable>
+              </View>
 
               {prev && (
                 <Text style={styles.lastSession}>
@@ -310,42 +294,23 @@ export default function WorkoutScreen() {
               {!isCollapsed && (
                 <View style={styles.sets}>
                   {block.sets.map((set) => (
-                    <SetRow
-                      key={set.id}
-                      set={set}
-                      onToggleComplete={() => {
-                        const next = !set.completed;
-                        updateSetLog(set.id, { completed: next });
-                        if (next) {
-                          void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-                        }
-                        refresh();
-                      }}
-                      onUpdateReps={(n) => {
-                        updateSetLog(set.id, { reps: n });
-                        refresh();
-                      }}
-                      onUpdateWeight={(n) => {
-                        updateSetLog(set.id, { weight: n });
-                        refresh();
-                      }}
-                    />
+                    <SetRow key={set.id} id={set.id} index={set.index}
+                      exerciseName={block.exercise.name} draft={draft.sets[set.id]}
+                      errors={errors[set.id]} onChange={changeSet} />
                   ))}
                   <View style={styles.setButtons}>
                     <Pressable
                       style={styles.smallBtn}
                       onPress={() => {
-                        void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                        addSetToWorkoutExercise(block.workoutExercise.id);
-                        refresh();
+                        changeStructure(() => addSetToWorkoutExercise(block.workoutExercise.id));
+                        void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
                       }}>
                       <Text style={styles.smallBtnText}>+ Set</Text>
                     </Pressable>
                     <Pressable
                       style={styles.smallBtn}
                       onPress={() => {
-                        removeLastSet(block.workoutExercise.id);
-                        refresh();
+                        changeStructure(() => removeLastSet(block.workoutExercise.id));
                       }}>
                       <Text style={styles.smallBtnText}>− Set</Text>
                     </Pressable>
@@ -353,6 +318,7 @@ export default function WorkoutScreen() {
                 </View>
               )}
             </Card>
+            </View>
           );
         })}
 
@@ -361,11 +327,12 @@ export default function WorkoutScreen() {
         ) : null}
       </ScrollView>
 
-      <Modal visible={pickerOpen} animationType="slide" transparent>
+      <Modal visible={pickerOpen} animationType="slide" transparent onRequestClose={() => setPickerOpen(false)}>
         <View style={styles.modalBackdrop}>
           <Card style={styles.modalCard}>
             <Text style={styles.modalTitle}>Add exercise</Text>
             <FlatList
+              keyboardShouldPersistTaps="handled"
               data={exercises}
               keyExtractor={(item) => item.id}
               style={styles.modalList}
@@ -412,7 +379,7 @@ const createStyles = (theme: AppTheme) =>
     },
     started: { fontSize: theme.fontSize.caption, color: theme.colors.textMuted, marginBottom: theme.space.md },
     toolbar: { gap: theme.space.sm, marginBottom: theme.space.md },
-    addExerciseBtn: { flexDirection: 'row', alignItems: 'center', marginBottom: theme.space.md },
+    addExerciseBtn: { minHeight: 48, flexDirection: 'row', alignItems: 'center', marginBottom: theme.space.md },
     addExerciseText: { color: theme.colors.accent, fontWeight: '700', fontSize: theme.fontSize.body },
     block: { marginBottom: theme.space.md },
     blockTitleRow: {
@@ -420,9 +387,12 @@ const createStyles = (theme: AppTheme) =>
       alignItems: 'center',
       justifyContent: 'space-between',
     },
-    blockTitleLeft: { flexDirection: 'row', alignItems: 'center', gap: theme.space.sm, flex: 1 },
+    blockTitleLeft: { minHeight: 48, flexDirection: 'row', alignItems: 'center', gap: theme.space.sm, flex: 1 },
     exerciseName: { fontSize: theme.fontSize.title, fontWeight: '700', color: theme.colors.textPrimary, flex: 1 },
-    blockActions: { flexDirection: 'row', gap: theme.space.md },
+    blockActions: { flexDirection: 'row' },
+    iconButton: { minWidth: 48, minHeight: 48, alignItems: 'center', justifyContent: 'center' },
+    error: { color: theme.colors.danger },
+    saveWarning: { gap: theme.space.sm, marginBottom: theme.space.md },
     lastSession: {
       fontSize: theme.fontSize.caption,
       color: theme.colors.textMuted,
@@ -430,22 +400,10 @@ const createStyles = (theme: AppTheme) =>
       marginBottom: theme.space.xs,
     },
     sets: { marginTop: theme.space.sm, gap: theme.space.sm },
-    setRow: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: theme.space.sm,
-      padding: theme.space.sm,
-      borderRadius: theme.radius.md,
-      borderWidth: 1,
-      borderColor: theme.colors.border,
-      backgroundColor: theme.colors.surfaceElevated,
-    },
-    checkWrap: { padding: 4 },
-    setLabel: { width: 28, color: theme.colors.textSecondary, fontSize: theme.fontSize.caption },
-    setInput: { flex: 1, minHeight: 44 },
-    times: { color: theme.colors.textMuted },
     setButtons: { flexDirection: 'row', gap: theme.space.sm, marginTop: theme.space.sm },
     smallBtn: {
+      minHeight: 48,
+      justifyContent: 'center',
       paddingVertical: theme.space.sm,
       paddingHorizontal: theme.space.md,
       borderRadius: theme.radius.md,

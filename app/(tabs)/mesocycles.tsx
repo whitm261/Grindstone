@@ -45,8 +45,15 @@ export default function MesocyclesScreen() {
         text: 'Delete',
         style: 'destructive',
         onPress: () => {
-          deleteMesocycle(item.id);
-          load();
+          try {
+            if (!deleteMesocycle(item.id)) {
+              Alert.alert('Cannot delete plan', 'This plan is used by training blocks and cannot be deleted. Your blocks and workout history are preserved.');
+              return;
+            }
+            load();
+          } catch {
+            Alert.alert('Could not delete plan', 'Your plan is unchanged. Please try again.');
+          }
         },
       },
     ]);

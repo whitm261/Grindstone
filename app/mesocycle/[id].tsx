@@ -288,7 +288,7 @@ export default function MesocycleBuilderScreen() {
   return (
     <View style={styles.container}>
       <Stack.Screen options={{ title: 'Edit Block Layout' }} />
-      <ScrollView contentContainerStyle={styles.scrollContent}>
+      <ScrollView contentContainerStyle={styles.scrollContent} keyboardShouldPersistTaps="handled">
         <View style={styles.header}>
           <Text style={styles.title}>{name}</Text>
           <Text style={styles.subTitle}>{weeks} Weeks</Text>
@@ -433,12 +433,13 @@ export default function MesocycleBuilderScreen() {
         </View>
       </ScrollView>
 
-      <Modal visible={!!exercisePicker} animationType="slide" transparent>
+      <Modal visible={!!exercisePicker} animationType="slide" transparent onRequestClose={() => setExercisePicker(null)}>
         <View style={styles.modalBackdrop}>
           <Card style={styles.modalCard}>
             <Text style={styles.modalTitle}>Choose exercise</Text>
             <FlatList
               data={allExercises}
+              keyboardShouldPersistTaps="handled"
               keyExtractor={(item) => item.id}
               renderItem={({ item }) => (
                 <Pressable style={styles.pickerRow} onPress={() => exercisePicker && addExercise(exercisePicker.workoutId, item)}>
