@@ -386,6 +386,24 @@ Android device/emulator verification is still required; Bun tests do not establi
 
 ## Development Environment
 
+### Local APK workflow
+
+- `bun run apk` runs `scripts/build-apk.ts`; `bun run apk --check` checks prerequisites and the private signing key without prebuild/build.
+- `bun run apk:install` runs `scripts/install-apk.ts`; supports `--apk`, `--serial`, and `ANDROID_SERIAL`. `--check` performs read-only compatibility checks on the phone without installing. Default artifact is the ignored `builds/movingweight.apk`.
+- Shared tooling is in `scripts/android-tools.ts`, and Java properties/signing checks are in `scripts/apk-signing.ts`. Tests mock subprocesses but exercise artifact publication, device selection, and update compatibility.
+- Build runs Expo prebuild for Android with `--no-install`, then Gradle `:app:assembleRelease` with all four Android architectures. Native directories stay generated/ignored; do not put durable manual changes or keystores there.
+- `plugins/with-local-apk-signing.cjs` appends an idempotent Gradle block. Only `-Pmovingweight.localApk=true` activates it, leaving EAS signing and ordinary development builds independent. Use a config plugin for persistent native changes.
+- JDK 17, SDK API 36, Build-Tools 36.0.0, NDK 27.1.12297006, CMake 3.22.1, Platform-Tools, and Command-line Tools (latest) are required. Keep the pinned SDK checks aligned with native dependencies when upgrading Expo/RN.
+- Credentials come from owner-only `~/.config/movingweight/signing/gradle.properties` (`XDG_CONFIG_HOME` is supported), falling back to private `~/.gradle/gradle.properties` (or `GRADLE_USER_HOME`). Keys are `MOVINGWEIGHT_STORE_FILE`, `MOVINGWEIGHT_STORE_PASSWORD`, `MOVINGWEIGHT_KEY_ALIAS`, and `MOVINGWEIGHT_KEY_PASSWORD`. Explicit `ORG_GRADLE_PROJECT_…` environment values override both files. Passwords are passed to subprocesses through environments, not command arguments or generated source.
+- Store the key, notes, and backup archive outside the repository under the same `signing/` directory (directory mode 700, files 600). The build rejects keystores resolving inside the repository, including symlinks. Keep Git ignore rules for EAS backup ZIPs and credential notes as well as raw keystores; ignore rules alone do not protect already tracked files.
+- Existing APKs require the same signing key; inspect the actual installed certificate rather than assuming EAS provenance. A formerly debug-signed local app can use an explicit private copy of its matching debug keystore for personal updates. There is no automatic signing fallback. Preserve the separate EAS backup and its settings. Certificate mismatches display both public SHA-256 fingerprints.
+- The current phone installation was verified as debug-signed. Its matching key is stored privately as `installed-app.jks`; private signing settings select it for local updates. `release.jks` and `eas-backup-gradle.properties` retain the different EAS key/settings. Do not switch to that EAS backup when updating the existing installation.
+- Local `expo.android.versionCode` is independent of EAS remote versioning; the installer rejects a lower code and tells the user which minimum to set.
+- Builds hold `builds/.apk-build.lock`, preserve caches, verify package/version/certificate, and publish atomically. After a forcibly interrupted build, remove a stale lock only after confirming no build is running.
+- Installation snapshots the candidate, pulls the installed base APK into a temporary directory, checks its certificate/version, then uses only `adb install -r`. Never add automatic uninstall, data clearing, downgrade flags, or launch behavior. Temporary APK copies are cleaned up on success/failure.
+- APK commands disable their own Bun dotenv loading; build subprocesses also set `EXPO_NO_DOTENV=1` and `EXPO_NO_TELEMETRY=1`. Do not add email notification to the build pipeline. The older notification script remains separate.
+- Real APK compilation and update/data-retention tests require installed SDK components, the key that signed the installed app, and a connected authorized phone. Mocked Bun tests and Expo bundling alone do not establish these behaviors. `docs/android-build.md` contains the user setup guide.
+
 
 - Bun is installed at `$HOME/.bun/bin/bun`; `bunx` is alongside it. Version verified during this refactor: `1.4.2`.
 - Tooling shells may omit `$HOME/.bun/bin` from `PATH`. If `bun` is not found, check that location and prepend it for the command instead of assuming Bun is uninstalled or switching package managers.

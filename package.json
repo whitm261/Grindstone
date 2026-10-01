@@ -9,7 +9,8 @@
     "web": "expo start --web",
     "typecheck": "bunx tsc --noEmit",
     "test": "bun test",
-    "apk": "START_TIME=$(date +%s) && cd android && ./gradlew assembleRelease && cd .. && END_TIME=$(date +%s) && BUILD_DURATION=$((END_TIME - START_TIME)) && bun scripts/notify-build.ts android/app/build/outputs/apk/release/app-release.apk $BUILD_DURATION && echo \"\\nAPK: $PWD/android/app/build/outputs/apk/release/app-release.apk\""
+    "apk": "bun --no-env-file scripts/build-apk.ts",
+    "apk:install": "bun --no-env-file scripts/install-apk.ts"
   },
   "dependencies": {
     "@expo/vector-icons": "^15.0.3",
